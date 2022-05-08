@@ -1,0 +1,21 @@
+from classes import PVR
+
+
+sonarr = PVR()
+sonarr4k = PVR()
+radarr = PVR()
+radarr4k = PVR()
+
+
+# config for scene2arr.py
+sonarr.url = "http://sonarr:9898/api/v3/releaseprofile/1"
+sonarr.apikey = ""
+
+sonarr4k.url = "http://sonarr4k:8989/api/v3/releaseprofile/1"
+sonarr4k.apikey = ""
+
+radarr.url = "http://radarr:8787/api/v3/restriction/1"
+radarr.apikey = ""
+
+radarr4k.url = "https://radarr4k:7878/api/v3/restriction/1"
+radarr4k.apikey = ""
