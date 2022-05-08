@@ -1,0 +1,4 @@
+*.db
+conf.py
+test
+venv
