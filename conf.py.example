@@ -1,10 +1,10 @@
 from classes import PVR
 
 
-sonarr = PVR()
-sonarr4k = PVR()
-radarr = PVR()
-radarr4k = PVR()
+sonarr = PVR("sonarr")
+sonarr4k = PVR("sonarr4k")
+radarr = PVR("radarr")
+radarr4k = PVR("radarr4k")
 
 
 # config for scene2arr.py
