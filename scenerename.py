@@ -3,13 +3,12 @@
 import argparse
 import datetime
 import json
+import requests
 import signal
 import sys
 from time import sleep
 import urllib.parse
 import zlib
-
-import requests
 
 from classes import *
 from constants import *
@@ -27,15 +26,14 @@ suffixes = [  # common additions from usenet
     "-Scrambled",
     "-RP",
     ".1",
-    " (1)",
-    ".(1)",
     "(1)",
     "-1",
     ".repost",
-    "-BUYMORE",
     "-repost",
+    "-BUYMORE",
     "-newz",
     ".",
+    " ",
     "-postbot",
     "-[cx86]",
     "-BWBP",
@@ -58,6 +56,7 @@ skiptags = [  # hardcoded blacklist, add p2p groups
     "M3lloW",
     "itouch-mw",
     "[Fullmetal]",
+    "-CtrlHD",
 ]
 
 
