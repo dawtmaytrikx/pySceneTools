@@ -287,10 +287,14 @@ def skip_file(fileobj):
             raise SkipFileError()
 
     # fix suffixes
-    for suffix in suffixes:
-        if fileobj.releaseName.lower().endswith(suffix.lower()):
-            fileobj.realName = fileobj.releaseName[: -len(suffix)]
-            fileobj = mislabeled(fileobj)
+    restart = True
+    while restart:
+        for suffix in suffixes:
+            restart = False
+            if fileobj.releaseName.lower().endswith(suffix.lower()):
+                fileobj.realName = fileobj.releaseName[: -len(suffix)]
+                fileobj = mislabeled(fileobj)
+                restart = True
 
     # skip, if already processed
     # TODO: skip manually renamed
