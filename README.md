@@ -5,7 +5,8 @@ This script lets you add new scene groups to a sonarr release profile / radarr r
 
 ### setup
 Initially `conf.py.example` needs to be renamed to `conf.py` and filled with the URLs to the *arr APIs and respective 
-API keys.
+API keys. The `/1` at the end of the URLs in the example refer to the id of the release profile or restriction in the 
+sonarr/radarr database. Check those databases to find the correct ID.
 
 ### usage
 ```
@@ -50,7 +51,7 @@ optional arguments:
   -t TAG, --tag TAG     Tag the files in dir as being movies, shows, etc.
   -w ARG [ARG ...], --whitelist ARG [ARG ...]
                         Only process files that include at least one of the arguments (case insensitive).
-  -d DIR, --dir DIR     folder with your media files
+  -d DIR, --dir DIR     Folder with your media files.
 ```
 All the collected metadata (filenames, hashes) are stored in a sqlite database to ensure releases are only processed 
 once. Deleting the database is a bad idea.

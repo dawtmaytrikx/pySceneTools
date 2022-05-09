@@ -5,7 +5,6 @@ from colorama import Fore
 import datetime
 from io import BytesIO
 import json
-# import pdb; pdb.set_trace()
 import pycurl
 import signal
 import sys
@@ -121,7 +120,7 @@ def start_argparse():
         action="store",
         default="",
         nargs=1,
-        help="Tag the files in dir as being movies, shows, etc.",
+        help="Tag the files in DIR as being MOViES, TV, etc.",
     )
     parser.add_argument(
         "-w",
@@ -133,7 +132,7 @@ def start_argparse():
         help="Only process files that include at least one of the arguments (case insensitive).",
     )
     parser.add_argument(
-        "-d", "--dir", nargs=1, required=True, help="folder with your media files"
+        "-d", "--dir", nargs=1, required=True, help="Folder with your media files."
     )
     # TODO: skip errors
 
