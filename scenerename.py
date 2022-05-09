@@ -2,14 +2,14 @@
 
 import argparse
 import datetime
-from io import BytesIO
 import json
-import pycurl
 import signal
 import sys
 from time import sleep
 import urllib.parse
 import zlib
+
+import requests
 
 from classes import *
 from constants import *
@@ -57,6 +57,7 @@ skiptags = [  # hardcoded blacklist, add p2p groups
     "-McTav",
     "M3lloW",
     "itouch-mw",
+    "[Fullmetal]",
 ]
 
 
@@ -184,20 +185,21 @@ def end_run(exitcode):
     )
     db.connection.commit()
     db.connection.close()
-    c.close()
+    session.close()
 
 
 def loadpage(url):  # buffer, c
-    buffer.seek(0)
-    buffer.truncate()
-    c.setopt(c.URL, url)
-    c.perform()
-    page = buffer.getvalue().decode("utf-8")
+    response = session.get(url)
+
+    while response.status_code == 503:
+        print("RATE LIMITED! Sleeping 10 s ...")
+        sleep(10)
+        response = session.get(response.url)
 
     if args["verbose"]:
-        print(f"{VERBOSE} {c.getinfo(c.RESPONSE_CODE)} - {url}\r\n{page}")
+        print(f"{VERBOSE} {response.status_code} - {url}\r\n{response.json()}")
 
-    return json.loads(page)
+    return response
 
 
 def error(errnum, description):  # fileToCheck, db
@@ -272,6 +274,10 @@ def wrong_filesize():  # fileToCheck
 
 
 def skip_file(fileobj):
+    # is this even a media file?
+    if fileobj.extension not in extensions:
+        raise SkipFileError()
+
     # handle whitelist
     for item in args["whitelist"]:
         if item in fileobj.filename.lower():
@@ -280,20 +286,11 @@ def skip_file(fileobj):
             print(f"{NOTWHITELISTED} {fileobj.filename}")
             raise SkipFileError()
 
-    # is this even a media file?
-    if fileobj.extension not in extensions:
-        raise SkipFileError()
-
     # fix suffixes
     for suffix in suffixes:
         if fileobj.releaseName.lower().endswith(suffix.lower()):
             fileobj.realName = fileobj.releaseName[: -len(suffix)]
             fileobj = mislabeled(fileobj)
-
-    for skiptag in skiptags:
-        if skiptag.lower() in fileobj.releaseName.lower():
-            print(f"{BLACKLISTED} {fileobj.releaseName}")
-            raise SkipFileError()
 
     # skip, if already processed
     # TODO: skip manually renamed
@@ -322,6 +319,11 @@ def skip_file(fileobj):
                 print(f"{SKIPPINGUNPROCESSED} {fileobj.releaseName}")
                 raise SkipFileError()
 
+    for skiptag in skiptags:
+        if skiptag.lower() in fileobj.releaseName.lower():
+            print(f"{BLACKLISTED} {fileobj.releaseName}")
+            raise SkipFileError()
+
     return fileobj
 
 
@@ -329,7 +331,7 @@ def search_for_release(fileobj):
     fileobj.page = loadpage(
         "https://api.srrdb.com/v1/search/r:"
         + urllib.parse.quote_plus(fileobj.releaseName)
-    )
+    ).json()
 
     if "resultsCount" not in fileobj.page:
         error(
@@ -346,7 +348,7 @@ def search_for_release(fileobj):
         fileobj.page = loadpage(
             "https://api.srrdb.com/v1/details/"
             + urllib.parse.quote_plus(fileobj.page["results"][0]["release"])
-        )
+        ).json()
 
         try:
             if len(fileobj.page["archived-files"]) == 1:
@@ -355,11 +357,16 @@ def search_for_release(fileobj):
                     fileobj.realName = fileobj.page["name"]
                     fileobj = mislabeled(fileobj)
                 else:
-                    wrong_filesize()  # TODO: Really do this already?
+                    wrong_filesize()
+                    error(
+                        15,
+                        "Filesize does not match that of release "
+                        + fileobj.page["name"],
+                    )
                     fileobj = search_by_sample(fileobj)
             else:
                 error(6, "Multiples files in release " + fileobj.page["name"])
-                # TODO: add fileobj = search_by_sample(fileobj) here?
+                fileobj = search_by_sample(fileobj)
         except KeyError:
             error(
                 11,
@@ -368,6 +375,7 @@ def search_for_release(fileobj):
                 + "\r\n"
                 + json.dumps(fileobj.page, indent=4)
             )
+            fileobj = search_by_sample(fileobj)
 
     # search for sample name
     else:
@@ -382,7 +390,7 @@ def search_by_sample(fileobj):
         fileobj.page = loadpage(
             "https://api.srrdb.com/v1/search/store-real-filename:"
             + urllib.parse.quote_plus(samplename)
-        )
+        ).json()
 
         if (
             "resultsCount" in fileobj.page
@@ -394,7 +402,7 @@ def search_by_sample(fileobj):
                 + urllib.parse.quote_plus(
                     fileobj.page["results"][0]["release"]
                 )
-            )
+            ).json()
 
             try:
                 if len(fileobj.page["archived-files"]) == 1:
@@ -403,7 +411,8 @@ def search_by_sample(fileobj):
                         fileobj.realName = fileobj.page["name"]
                         fileobj = mislabeled(fileobj)
                         break
-                    else:  # TODO: really an error here?
+                    else:
+                        wrong_filesize()
                         error(
                             10,
                             "Filesize does not match that of release "
@@ -448,14 +457,14 @@ def search_by_crc(fileobj):  # db
 
     fileobj.page = loadpage(
         "https://api.srrdb.com/v1/search/archive-crc:" + fileobj.crccalc
-    )
+    ).json()
 
     if int(fileobj.page["resultsCount"]) == 1:
         # rename
         fileobj.page = loadpage(
             "https://api.srrdb.com/v1/details/"
             + urllib.parse.quote_plus(fileobj.page["results"][0]["release"])
-        )
+        ).json()
 
         if not fileobj.page:
             # url of page
@@ -472,6 +481,7 @@ def search_by_crc(fileobj):  # db
                         # details page as a sanity check.
                         fileobj.crcweb = fileobj.page["archived-files"][0]["crc"]
                     else:
+                        wrong_filesize()
                         error(
                             9,
                             "Filesize does not match that of release "
@@ -552,10 +562,12 @@ if __name__ == "__main__":
     # this will catch keyboard interrupts
     signal.signal(signal.SIGINT, signal_handler)
 
+    # set up argparse
     args = start_argparse()
     if args["verbose"]:
         print(args)
 
+    # set up database
     db = create_db("scenerename.db")
     start = datetime.datetime.now(datetime.timezone.utc)
     db.cursor.execute(
@@ -563,13 +575,12 @@ if __name__ == "__main__":
     )
     db.connection.commit()
 
-    buffer = BytesIO()
-    c = pycurl.Curl()
+    # set up requests
+    session = requests.Session()
     if args["no_ssl_verify"]:
         # if ssl verification fails, try this instead of enabling this option:
         # sudo dpkg-reconfigure ca-certificates -> deactivate DST_Root_CA_X3.crt (expired on Oct 1 2021)
-        c.setopt(c.SSL_VERIFYPEER, 0)
-        c.setopt(c.SSL_VERIFYHOST, 0)
+        session.verify = False
 
     for dirpath, dirs, files in os.walk(args["dir"][0]):
         for filename in files:
@@ -578,59 +589,44 @@ if __name__ == "__main__":
             try:
                 fileToCheck = skip_file(fileToCheck)
 
-                c.setopt(
-                    c.URL,
+                response = loadpage(
                     "https://api.srrdb.com/v1/details/"
                     + urllib.parse.quote_plus(fileToCheck.releaseName),
                 )
-                c.setopt(c.WRITEDATA, buffer)
-                c.perform()
 
                 # check response code
                 # 404 only on release/details
                 # 302 is redirect
                 # what's with 300?
                 # 400 is illegal characters (should be caught by skiptags!)
-                if c.getinfo(c.RESPONSE_CODE) == 400:  # TODO: add these checks to loadpage()
+                if response.status_code == 400:
                     error(5, "Illegal character in filename!")
                     continue
 
-                while c.getinfo(c.RESPONSE_CODE) == 503:
-                    print("RATE LIMITED! Sleeping 10 s ...")
-                    sleep(10)
-                    c.perform()
-
                 # rename
-                if c.getinfo(c.RESPONSE_CODE) == 302:
-                    c.setopt(c.FOLLOWLOCATION, 1)
-                    c.perform()
+                if response.history:  # if response.status_code == 302:
                     # see https://bitbucket.org/srrdb/srrdb-issues/issues/114/api-faulty-redirect-if-query-contains
-                    realurl = c.getinfo(c.EFFECTIVE_URL).replace("/release/", "/v1/")
-                    fileToCheck.page = loadpage(realurl)
+                    realurl = response.url.replace("/release/", "/v1/")
+                    fileToCheck.page = loadpage(realurl).json()
 
                     if args["verbose"]:
                         print(
-                            f"{VERBOSE} {c.getinfo(c.RESPONSE_CODE)} - {realurl}\r\n{fileToCheck.page}"
+                            f"{VERBOSE} {response.status_code} - {realurl}\r\n{fileToCheck.page}"
                         )
 
                     fileToCheck.realName = fileToCheck.page["name"]
                     fileToCheck = mislabeled(fileToCheck)
 
-                fileToCheck.page = json.loads(buffer.getvalue().decode("utf-8"))
-                if args["verbose"]:
-                    print(
-                        f"{VERBOSE} {c.getinfo(c.RESPONSE_CODE)} - https://api.srrdb.com/v1/details/"
-                        + f"{urllib.parse.quote_plus(fileToCheck.releaseName)}\r\n{fileToCheck.page}"
-                    )
+                fileToCheck.page = response.json()
 
-                if c.getinfo(c.RESPONSE_CODE) == 200 and fileToCheck.page:
+                if response.status_code == 200 and fileToCheck.page:
                     if args["no_comparison"]:
                         upsert_db(fileToCheck, None)
                         print(f"{MATCHED} {fileToCheck.releaseName}")
 
-                # search
+                # search for release
                 if (
-                    c.getinfo(c.RESPONSE_CODE) == 404
+                    response.status_code == 404
                     or not fileToCheck.page
                     or fileToCheck.unprocessed
                 ):
@@ -642,8 +638,9 @@ if __name__ == "__main__":
                 # find CRC in page
                 try:
                     if not fileToCheck.page["archived-files"]:
-                        continue  # TODO: Add errors
+                        raise KeyError
                 except KeyError:
+                    error(14, "No files in release " + fileToCheck.releaseName)
                     continue
 
                 # compare filesizes
@@ -659,9 +656,7 @@ if __name__ == "__main__":
                     try:
                         fileToCheck = search_by_crc(fileToCheck)
                     except ReleaseNotFoundError:
-                        wrong_filesize()
                         continue
-
 
                 # calculate CRC
                 if not fileToCheck.crccalc:
@@ -694,8 +689,8 @@ if __name__ == "__main__":
                         f"{CORRUPT} {fileToCheck.releaseName} {fileToCheck.crccalc} {fileToCheck.crcweb}"
                     )
 
-            except pycurl.error:
-                error("pyCurl", pycurl.error)
+            except requests.exceptions.RequestException as e:
+                error("pyCurl", e)
                 continue
             except SkipFileError:
                 continue
@@ -704,8 +699,9 @@ if __name__ == "__main__":
             except OSError:
                 continue
             finally:
-                db.connection.commit()
-                buffer.seek(0)
-                buffer.truncate()
+                try:
+                    db.connection.commit()
+                except sqlite3.ProgrammingError:
+                    pass
 
     end_run(0)
