@@ -131,7 +131,7 @@ def init_pvrs():
 
 
 def scan():
-    for category in ("MOVIES", "TV"):
+    for category in xrel_categories:
         if args["verbose"]:
             print(f"VERBOSE: Now processing category {category}")
         db.cursor.execute("SELECT releasedate FROM latest WHERE category = ?", (category,))
