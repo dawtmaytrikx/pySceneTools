@@ -701,7 +701,7 @@ if __name__ == "__main__":
             finally:
                 try:
                     db.connection.commit()
-                except sqlite3.ProgrammingError:
+                except sqlite3.ProgrammingError:  # triggers at KeyBoardInterrupt
                     pass
 
     end_run(0)
