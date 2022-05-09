@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 import argparse
-from colorama import Fore
 import datetime
 from io import BytesIO
 import json
@@ -13,6 +12,7 @@ import urllib.parse
 import zlib
 
 from classes import *
+from constants import *
 
 
 # set up some constants
@@ -58,21 +58,6 @@ skiptags = [  # hardcoded blacklist, add p2p groups
     "M3lloW",
     "itouch-mw",
 ]
-
-VERBOSE = f"{Fore.YELLOW}VERBOSE:{Fore.RESET}"
-ERROR = f"{Fore.RED}ERROR:{Fore.RESET}"
-RENAMED = f"{Fore.BLUE}RENAMED:{Fore.RESET}"
-WRONGFILESIZE = f"{Fore.RED}WRONG FILESIZE:{Fore.RESET}"
-NOTWHITELISTED = f"SKIPPING {Fore.RED}NOT WHITELISTED{Fore.RESET}:"
-BLACKLISTED = f"SKIPPING {Fore.RED}BLACKLISTED{Fore.RESET}:"
-SKIPPINGOK = f"SKIPPING {Fore.GREEN}OK{Fore.RESET}:"
-SKIPPINGCORRUPT = f"SKIPPING {Fore.RED}CORRUPT{Fore.RESET}:"
-SKIPPINGNOTFOUND = f"SKIPPING {Fore.MAGENTA}NOT FOUND{Fore.RESET}:"
-SKIPPINGUNPROCESSED = f"SKIPPING {Fore.CYAN}UNPROCESSED{Fore.RESET}:"
-MATCHED = f"{Fore.GREEN}MATCHED:{Fore.RESET}"
-NOTFOUND = f"{Fore.MAGENTA}NOT FOUND:{Fore.RESET}"
-OK = f"{Fore.GREEN}OK:{Fore.RESET}"
-CORRUPT = f"{Fore.RED}CORRUPT:{Fore.RESET}"
 
 
 # here come our functions

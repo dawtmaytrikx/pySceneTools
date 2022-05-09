@@ -8,6 +8,7 @@ import time
 
 from conf import *
 from classes import *
+from constants import *
 
 
 def start_argparse():
@@ -114,7 +115,7 @@ def init_pvrs():
         pvr.response = requests.get(pvr.url, headers=notify_headers)
     
         if pvr.response.status_code != 200:
-            print(f"ERROR: Something's wrong with {pvr.name}")
+            print(f"{ERROR} Something's wrong with {pvr.name}")
             continue
     
         pvr.response = pvr.response.json()
@@ -124,7 +125,7 @@ def init_pvrs():
         if isinstance(pvr.required, str):
             pvr.required = pvr.required.split(",")
         elif not isinstance(pvr.required, list):
-            print(f"ERROR: Restrictions in {pvr.name} are neither LIST nor STR.")
+            print(f"{ERROR} Restrictions in {pvr.name} are neither LIST nor STR.")
             pvr.skip = True
 
     return pvrs
@@ -133,7 +134,7 @@ def init_pvrs():
 def scan():
     for category in xrel_categories:
         if args["verbose"]:
-            print(f"VERBOSE: Now processing category {category}")
+            print(f"{VERBOSE} Now processing category {category}")
         db.cursor.execute("SELECT releasedate FROM latest WHERE category = ?", (category,))
         result = db.cursor.fetchone()
         if result is not None:
@@ -144,18 +145,18 @@ def scan():
         for page in range(1, 51):
             already_processed = []
             if args["verbose"]:
-                print(f"VERBOSE: Now processing page {page}")
+                print(f"{VERBOSE} Now processing page {page}")
             xrel = requests.get(
                 "https://api.xrel.to/v2/release/browse_category.json"
                 + f"?category_name={category}&per_page=100&page={page}"
             )
             if xrel.status_code == 429:
-                print("ERROR: Rate limited. Try again later.")
+                print("{ERROR} Rate limited. Try again later.")
                 sys.exit(1)
             elif xrel.status_code != 200:
-                print("ERROR: xREL API failed. Try again later.")
+                print("{ERROR} xREL API failed. Try again later.")
                 if args["verbose"]:
-                    print(f"VERBOSE: {xrel.status_code} - {xrel.content}")
+                    print(f"{VERBOSE} {xrel.status_code} - {xrel.content}")
                 sys.exit(1)
             xrel = xrel.json()["list"]
 
@@ -165,7 +166,7 @@ def scan():
                         is_ignored = False
                         if args["verbose"]:
                             print(
-                                f"VERBOSE: Processing release {release['dirname']} for {pvr.name}. Release #{index}"
+                                f"{VERBOSE} Processing release {release['dirname']} for {pvr.name}. Release #{index}"
                             )
 
                         if page == 1 and release == xrel[0]:
@@ -185,7 +186,7 @@ def scan():
                             ignorelist = pvr.ignored
                         else:
                             print(
-                                f"ERROR: Something's wrong with the ignored in {pvr.name}."
+                                f"{ERROR} Something's wrong with the ignored in {pvr.name}."
                             )
                             sys.exit(1)
 
@@ -194,7 +195,7 @@ def scan():
                                 is_ignored = True  # TODO raise IgnoreError
                                 break
                         if is_ignored == True:
-                            print(f"IGNORED: {release['dirname']} in {pvr.name}.")
+                            print(f"{IGNORED} {release['dirname']} in {pvr.name}.")
                             continue
                         else:
                             newrestriction = "-" + release["group_name"]
@@ -209,17 +210,17 @@ def scan():
                         if newrestriction not in pvr.required:
                             pvr.required.append(newrestriction)
                             pvr = update_pvr(pvr, newrestriction, release)
-                            print(f"ADDED: {newrestriction} to {pvr.name}! Release: {release['dirname']}")
+                            print(f"{ADDED} {newrestriction} to {pvr.name}! Release: {release['dirname']}")
                         else:
                             print(
-                                f"SKIPPED: {newrestriction} is already in "
+                                f"{SKIPPING} {newrestriction} is already in "
                                 + f"{pvr.name}! Release: {release['dirname']}"
                             )
                             continue
 
             if args['verbose']:
                 print(
-                    f'VERBOSE: {len(already_processed)} out of {len(pvrs)} '
+                    f'{VERBOSE} {len(already_processed)} out of {len(pvrs)} '
                     + 'PVRs have reached their last processed release.'
                 )
             # will only trigger after all pvrs reached the previously processed release
@@ -245,36 +246,36 @@ def scan():
             )
             db.connection.commit()
         else:
-            print(f"INFO: Nothing to do in category {category}.")
+            print(f"{INFO} Nothing to do in category {category}.")
 
 
 def add_remove():
     newrestriction = "-" + "".join(args["group"])
     if args["verbose"]:
-        print(f"VERBOSE: Group: {newrestriction}")
+        print(f"{VERBOSE} Group: {newrestriction}")
     for pvr in pvrs:
         if args["verbose"]:
-            print(f"VERBOSE: Now handling {pvr.name}")
+            print(f"{VERBOSE} Now handling {pvr.name}")
         if not pvr.skip:
             if args["add"]:
                 if args["verbose"]:
-                    print(f"VERBOSE: Adding {newrestriction} to {pvr.name}!")
+                    print(f"{VERBOSE} Adding {newrestriction} to {pvr.name}!")
                 if newrestriction not in pvr.required:
                     pvr.required.append(newrestriction)
                     pvr = update_pvr(pvr, newrestriction)
-                    print(f'ADDED: {newrestriction} to {pvr.name}!')
+                    print(f'{ADDED} {newrestriction} to {pvr.name}!')
                 else:
-                    print(f"INFO: {newrestriction} is already in {pvr.name}!")
+                    print(f"{INFO} {newrestriction} is already in {pvr.name}!")
                     continue
             elif args["remove"]:
                 if args["verbose"]:
-                    print(f"VERBOSE: Removing {newrestriction} from {pvr.name}")
+                    print(f"{VERBOSE} Removing {newrestriction} from {pvr.name}")
                 if newrestriction in pvr.required:
                     pvr.required.remove(newrestriction)
                     pvr = update_pvr(pvr, newrestriction)
-                    print(f'REMOVED: {newrestriction} from {pvr.name}!')
+                    print(f'{REMOVED} {newrestriction} from {pvr.name}!')
                 else:
-                    print(f"INFO: {newrestriction} was not in {pvr.name}!")
+                    print(f"{INFO} {newrestriction} was not in {pvr.name}!")
                     continue
 
 
@@ -294,10 +295,10 @@ def update_pvr(pvr, newrestriction, release=None):
 
     while reply.status_code != 202:
         print(
-            f"ERROR: Could not modify {newrestriction} in {pvr.name}. Response code: {reply.status_code}"
+            f"{ERROR} Could not modify {newrestriction} in {pvr.name}. Response code: {reply.status_code}"
         )
         if args["verbose"]:
-            print(f"VERBOSE: {reply.content}")
+            print(f"{VERBOSE} {reply.content}")
         time.sleep(60)
         # TO DO: Handle errors
     if reply.status_code == 202:
