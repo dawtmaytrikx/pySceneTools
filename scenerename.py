@@ -187,7 +187,7 @@ def end_run(exitcode):
     session.close()
 
 
-def loadpage(url):  # buffer, c
+def loadpage(url):
     response = session.get(url)
 
     while response.status_code == 503:
@@ -201,76 +201,191 @@ def loadpage(url):  # buffer, c
     return response
 
 
-def error(errnum, description):  # fileToCheck, db
-    print(f"{ERROR} {errnum} - {description}\r\n\tfile: {fileToCheck.filename}")
+def error(errnum, description, fileobj):
+    print(f"{ERROR} {errnum} - {description}\r\n\tfile: {fileobj.filename}")
     db.cursor.execute(
         """INSERT INTO errors 
         (relname, errnum, description, page, date) 
         VALUES (?, ?, ?, ?, ?)""",
         (
-            os.path.join(fileToCheck.dirpath, fileToCheck.filename),
+            fileobj.filepath,
             errnum,
             str(description),
-            json.dumps(fileToCheck.page, indent=4),
+            json.dumps(fileobj.page, indent=4),
             datetime.datetime.now(datetime.timezone.utc),
         ),
     )
 
 
 def mislabeled(fileobj):
-    if os.path.exists(os.path.join(fileobj.dirpath, fileobj.realName) + fileobj.extension):
-        error(13, f"Tried renaming {fileobj.releaseName} to {fileobj.realName}, but file already exists!")
+    newfilepath = os.path.join(fileobj.dirpath, fileobj.realName) + fileobj.extension
+    if os.path.exists(newfilepath):
+        error(13, f"Tried renaming {fileobj.releaseName} to {fileobj.realName}, but file already exists!", fileobj)
         raise OSError()
-    os.rename(
-        os.path.join(fileobj.dirpath, fileobj.releaseName)
-        + fileobj.extension,
-        os.path.join(fileobj.dirpath, fileobj.realName) + fileobj.extension,
-    )
+    os.rename(fileobj.filepath, newfilepath)
     print(f"{RENAMED} {fileobj.releaseName} -> {fileobj.realName}")
-    upsert_db(fileobj, "RENAMED")
+    upsert_db(fileobj, "RENAMED")  # TODO: move this down and simplify upsert_db()
+    fileobj.filepath = newfilepath
     fileobj.releaseName = fileobj.realName
     fileobj.realName = None
     return fileobj
 
 
-def calculatecrc(filepath):  # fileToCheck
+def calculatecrc(fileobj):
     if args["verbose"]:
-        print(f"{VERBOSE} Calculating CRC for {fileToCheck.filename}")
+        print(f"{VERBOSE} Calculating CRC for {fileobj.filename}")
 
-    with open(filepath, "rb") as afile:
+    with open(fileobj.filepath, "rb") as afile:
         buffr = afile.read(buffersize)
         crcvalue = 0
         while len(buffr) > 0:
             crcvalue = zlib.crc32(buffr, crcvalue)
             buffr = afile.read(buffersize)
-    crccalc = "{:08X}".format(crcvalue)
+    fileobj.crccalc = "{:08X}".format(crcvalue)
 
     if args["verbose"]:
-        print(f"{VERBOSE} CRC is {crccalc}")
+        print(f"{VERBOSE} CRC is {fileobj.crccalc}")
 
-    return crccalc
+    return fileobj
 
 
-def getsize():  # fileToCheck
-    fileToCheck.sizeondisk = os.path.getsize(
-        os.path.join(fileToCheck.dirpath, fileToCheck.releaseName)
-        + fileToCheck.extension
-    )
-    fileToCheck.sizeonsrrdb = int(fileToCheck.page["archived-files"][0]["size"])
+def getsize(fileobj):
+    fileobj.sizeondisk = os.path.getsize(fileobj.filepath)
+    fileobj.sizeonsrrdb = int(fileobj.page["archived-files"][0]["size"])
 
     if args["verbose"]:
         print(
-            f"{VERBOSE} Size of file on disk: {fileToCheck.sizeondisk}"
-            + f" - size of file on srrdb: {fileToCheck.sizeonsrrdb}"
+            f"{VERBOSE} Size of file on disk: {fileobj.sizeondisk}"
+            + f" - size of file on srrdb: {fileobj.sizeonsrrdb}"
         )
 
-    return fileToCheck.sizeondisk, fileToCheck.sizeonsrrdb
+    return fileobj
 
 
-def wrong_filesize():  # fileToCheck
-    upsert_db(fileToCheck, "CORRUPT")
-    print(f"{WRONGFILESIZE} {fileToCheck.releaseName}")
+def wrong_filesize(fileobj):
+    upsert_db(fileobj, "CORRUPT")
+    print(f"{WRONGFILESIZE} {fileobj.releaseName}")
 
+
+def process_files(path):
+    for dirpath, dirs, files in os.walk(path):
+        for filename in files:
+            fileobj = FileToCheck(dirpath, filename)
+
+            try:
+                fileobj = skip_file(fileobj)
+
+                response = loadpage(
+                    "https://api.srrdb.com/v1/details/"
+                    + urllib.parse.quote_plus(fileobj.releaseName),
+                )
+
+                # check response code
+                # 404 only on release/details
+                # 302 is redirect
+                # what's with 300?
+                # 400 is illegal characters (should be caught by skiptags!)
+                if response.status_code == 400:
+                    error(5, "Illegal character in filename!", fileobj)
+                    continue
+
+                # rename
+                if response.history:  # if response.status_code == 302:
+                    # see https://bitbucket.org/srrdb/srrdb-issues/issues/114/api-faulty-redirect-if-query-contains
+                    realurl = response.url.replace("/release/", "/v1/")
+                    fileobj.page = loadpage(realurl).json()
+
+                    if args["verbose"]:
+                        print(
+                            f"{VERBOSE} {response.status_code} - {realurl}\r\n{fileobj.page}"
+                        )
+
+                    fileobj.realName = fileobj.page["name"]
+                    fileobj = mislabeled(fileobj)
+
+                fileobj.page = response.json()
+
+                if response.status_code == 200 and fileobj.page:
+                    if args["no_comparison"]:
+                        upsert_db(fileobj, None)
+                        print(f"{MATCHED} {fileobj.releaseName}")
+
+                # search for release
+                if (
+                    response.status_code == 404
+                    or not fileobj.page
+                    or fileobj.unprocessed
+                ):
+                    fileobj = search_for_release(fileobj)
+
+                if args["no_comparison"]:
+                    continue
+
+                # find CRC in page
+                try:
+                    if not fileobj.page["archived-files"]:
+                        raise KeyError
+                except KeyError:
+                    error(14, "No files in release " + fileobj.releaseName, fileobj)
+                    continue
+
+                # compare filesizes
+                if not fileobj.sizeondisk or not fileobj.sizeonsrrdb:
+                    fileobj = getsize(fileobj)
+
+                if fileobj.sizeondisk == fileobj.sizeonsrrdb:
+                    fileobj.crcweb = fileobj.page["archived-files"][0]["crc"]
+                else:
+                    if fileobj.crccalc:
+                        wrong_filesize(fileobj)
+                        continue
+                    try:
+                        fileobj = search_by_crc(fileobj)
+                    except ReleaseNotFoundError:
+                        continue
+
+                # calculate CRC
+                if not fileobj.crccalc:
+                    db.cursor.execute(
+                        "SELECT crccalc FROM srrdb WHERE relname=?",
+                        (fileobj.releaseName,),
+                    )
+                    record = db.cursor.fetchone()
+
+                    if record is not None and record[0] is not None:
+                        if args["verbose"]:
+                            print(
+                                f"{VERBOSE} Using CRC found in DB: {fileobj.crccalc}"
+                            )
+                        fileobj.crccalc = record[0]
+                    else:
+                        if args["verbose"]:
+                            print(f"{VERBOSE} No CRC found in DB.")
+                        fileobj = calculatecrc(fileobj)
+
+                if fileobj.crccalc == fileobj.crcweb:
+                    upsert_db(fileobj, "OK")
+                    print(f"{OK} {fileobj.releaseName} {fileobj.crccalc}")
+                else:
+                    upsert_db(fileobj, "CORRUPT")
+                    print(
+                        f"{CORRUPT} {fileobj.releaseName} {fileobj.crccalc} {fileobj.crcweb}"
+                    )
+
+            except requests.exceptions.RequestException as e:
+                error("pyCurl", e, fileobj)
+                continue
+            except SkipFileError:
+                continue
+            except ReleaseNotFoundError:
+                continue
+            except OSError:
+                continue
+            finally:
+                try:
+                    db.connection.commit()
+                except sqlite3.ProgrammingError:  # triggers at KeyBoardInterrupt
+                    pass
 
 def skip_file(fileobj):
     # is this even a media file?
@@ -343,6 +458,7 @@ def search_for_release(fileobj):
             + urllib.parse.quote_plus(fileobj.releaseName)
             + "\r\n"
             + fileobj.page,
+            fileobj
         )
         fileobj = search_by_sample(fileobj)
 
@@ -355,20 +471,21 @@ def search_for_release(fileobj):
 
         try:
             if len(fileobj.page["archived-files"]) == 1:
-                fileobj.sizeondisk, fileobj.sizeonsrrdb = getsize()
+                fileobj = getsize(fileobj)
                 if fileobj.sizeondisk == fileobj.sizeonsrrdb:
                     fileobj.realName = fileobj.page["name"]
                     fileobj = mislabeled(fileobj)
                 else:
-                    wrong_filesize()
+                    # wrong_filesize(fileobj)
                     error(
                         15,
                         "Filesize does not match that of release "
                         + fileobj.page["name"],
+                        fileobj
                     )
                     fileobj = search_by_sample(fileobj)
             else:
-                error(6, "Multiples files in release " + fileobj.page["name"])
+                error(6, "Multiples files in release " + fileobj.page["name"], fileobj)
                 fileobj = search_by_sample(fileobj)
         except KeyError:
             error(
@@ -376,7 +493,8 @@ def search_for_release(fileobj):
                 "Problem while processing page https://api.srrdb.com/v1/details/"
                 + fileobj.page["results"][0]["release"]
                 + "\r\n"
-                + json.dumps(fileobj.page, indent=4)
+                + json.dumps(fileobj.page, indent=4),
+                fileobj
             )
             fileobj = search_by_sample(fileobj)
 
@@ -409,23 +527,25 @@ def search_by_sample(fileobj):
 
             try:
                 if len(fileobj.page["archived-files"]) == 1:
-                    fileobj.sizeondisk, fileobj.sizeonsrrdb = getsize()
+                    fileobj = getsize(fileobj)
                     if fileobj.sizeondisk == fileobj.sizeonsrrdb:
                         fileobj.realName = fileobj.page["name"]
                         fileobj = mislabeled(fileobj)
                         break
                     else:
-                        wrong_filesize()
+                        # wrong_filesize(fileobj)
                         error(
                             10,
                             "Filesize does not match that of release "
                             + fileobj.page["name"],
+                            fileobj
                         )
                         fileobj = search_by_crc(fileobj)
                 else:
                     error(
                         7,
                         "Multiple files in release " + fileobj.page["name"],
+                        fileobj
                     )
                     fileobj = search_by_crc(fileobj)
             except KeyError:
@@ -434,7 +554,8 @@ def search_by_sample(fileobj):
                     "Problem while processing page https://api.srrdb.com/v1/details/"
                     + fileobj.page["results"][0]["release"]
                     + "\r\n"
-                    + json.dumps(fileobj.page, indent=4)
+                    + json.dumps(fileobj.page, indent=4),
+                    fileobj
                 )
                 fileobj = search_by_crc(fileobj)
 
@@ -454,9 +575,7 @@ def search_by_crc(fileobj):  # db
     if record is not None and record[0] is not None:
         fileobj.crccalc = record[0]
     else:
-        fileobj.crccalc = calculatecrc(
-            os.path.join(fileobj.dirpath, fileobj.releaseName) + fileobj.extension
-        )
+        fileobj = calculatecrc(fileobj)
 
     fileobj.page = loadpage(
         "https://api.srrdb.com/v1/search/archive-crc:" + fileobj.crccalc
@@ -471,11 +590,11 @@ def search_by_crc(fileobj):  # db
 
         if not fileobj.page:
             # url of page
-            error(11, "Error in srrDB entry!")
+            error(11, "Error in srrDB entry!", fileobj)
         else:
             try:
                 if len(fileobj.page["archived-files"]) == 1:
-                    fileobj.sizeondisk, fileobj.sizeonsrrdb = getsize()
+                    fileobj = getsize(fileobj)
                     if fileobj.sizeondisk == fileobj.sizeonsrrdb:
                         fileobj.realName = fileobj.page["name"]
                         fileobj = mislabeled(fileobj)
@@ -484,17 +603,19 @@ def search_by_crc(fileobj):  # db
                         # details page as a sanity check.
                         fileobj.crcweb = fileobj.page["archived-files"][0]["crc"]
                     else:
-                        wrong_filesize()
+                        # wrong_filesize(fileobj)
                         error(
                             9,
                             "Filesize does not match that of release "
                             + fileobj.page["name"],
+                            fileobj
                         )
                         raise ReleaseNotFoundError()
                 else:
                     error(
                         8,
                         "Multiple files in release " + fileobj.page["name"],
+                        fileobj
                     )
                     raise ReleaseNotFoundError()
             except KeyError:
@@ -503,7 +624,8 @@ def search_by_crc(fileobj):  # db
                     "Problem while processing page https://api.srrdb.com/v1/details/"
                     + fileobj.page["results"][0]["release"]
                     + "\r\n"
-                    + json.dumps(fileobj.page, indent=4)
+                    + json.dumps(fileobj.page, indent=4),
+                    fileobj
                 )
                 raise ReleaseNotFoundError()
     else:
@@ -585,126 +707,6 @@ if __name__ == "__main__":
         # sudo dpkg-reconfigure ca-certificates -> deactivate DST_Root_CA_X3.crt (expired on Oct 1 2021)
         session.verify = False
 
-    for dirpath, dirs, files in os.walk(args["dir"][0]):
-        for filename in files:
-            fileToCheck = FileToCheck(dirpath, filename)
-
-            try:
-                fileToCheck = skip_file(fileToCheck)
-
-                response = loadpage(
-                    "https://api.srrdb.com/v1/details/"
-                    + urllib.parse.quote_plus(fileToCheck.releaseName),
-                )
-
-                # check response code
-                # 404 only on release/details
-                # 302 is redirect
-                # what's with 300?
-                # 400 is illegal characters (should be caught by skiptags!)
-                if response.status_code == 400:
-                    error(5, "Illegal character in filename!")
-                    continue
-
-                # rename
-                if response.history:  # if response.status_code == 302:
-                    # see https://bitbucket.org/srrdb/srrdb-issues/issues/114/api-faulty-redirect-if-query-contains
-                    realurl = response.url.replace("/release/", "/v1/")
-                    fileToCheck.page = loadpage(realurl).json()
-
-                    if args["verbose"]:
-                        print(
-                            f"{VERBOSE} {response.status_code} - {realurl}\r\n{fileToCheck.page}"
-                        )
-
-                    fileToCheck.realName = fileToCheck.page["name"]
-                    fileToCheck = mislabeled(fileToCheck)
-
-                fileToCheck.page = response.json()
-
-                if response.status_code == 200 and fileToCheck.page:
-                    if args["no_comparison"]:
-                        upsert_db(fileToCheck, None)
-                        print(f"{MATCHED} {fileToCheck.releaseName}")
-
-                # search for release
-                if (
-                    response.status_code == 404
-                    or not fileToCheck.page
-                    or fileToCheck.unprocessed
-                ):
-                    fileToCheck = search_for_release(fileToCheck)
-
-                if args["no_comparison"]:
-                    continue
-
-                # find CRC in page
-                try:
-                    if not fileToCheck.page["archived-files"]:
-                        raise KeyError
-                except KeyError:
-                    error(14, "No files in release " + fileToCheck.releaseName)
-                    continue
-
-                # compare filesizes
-                if not fileToCheck.sizeondisk or not fileToCheck.sizeonsrrdb:
-                    fileToCheck.sizeondisk, fileToCheck.sizeonsrrdb = getsize()
-
-                if fileToCheck.sizeondisk == fileToCheck.sizeonsrrdb:
-                    fileToCheck.crcweb = fileToCheck.page["archived-files"][0]["crc"]
-                else:
-                    if fileToCheck.crccalc:
-                        wrong_filesize()
-                        continue
-                    try:
-                        fileToCheck = search_by_crc(fileToCheck)
-                    except ReleaseNotFoundError:
-                        continue
-
-                # calculate CRC
-                if not fileToCheck.crccalc:
-                    db.cursor.execute(
-                        "SELECT crccalc FROM srrdb WHERE relname=?",
-                        (fileToCheck.releaseName,),
-                    )
-                    record = db.cursor.fetchone()
-
-                    if record is not None and record[0] is not None:
-                        if args["verbose"]:
-                            print(
-                                f"{VERBOSE} Using CRC found in DB: {fileToCheck.crccalc}"
-                            )
-                        fileToCheck.crccalc = record[0]
-                    else:
-                        if args["verbose"]:
-                            print(f"{VERBOSE} No CRC found in DB.")
-                        fileToCheck.crccalc = calculatecrc(
-                            os.path.join(fileToCheck.dirpath, fileToCheck.releaseName)
-                            + fileToCheck.extension
-                        )
-
-                if fileToCheck.crccalc == fileToCheck.crcweb:
-                    upsert_db(fileToCheck, "OK")
-                    print(f"{OK} {fileToCheck.releaseName} {fileToCheck.crccalc}")
-                else:
-                    upsert_db(fileToCheck, "CORRUPT")
-                    print(
-                        f"{CORRUPT} {fileToCheck.releaseName} {fileToCheck.crccalc} {fileToCheck.crcweb}"
-                    )
-
-            except requests.exceptions.RequestException as e:
-                error("pyCurl", e)
-                continue
-            except SkipFileError:
-                continue
-            except ReleaseNotFoundError:
-                continue
-            except OSError:
-                continue
-            finally:
-                try:
-                    db.connection.commit()
-                except sqlite3.ProgrammingError:  # triggers at KeyBoardInterrupt
-                    pass
+    process_files(args["dir"][0])
 
     end_run(0)
