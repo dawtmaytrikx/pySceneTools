@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import json
+import random
 import signal
 import sys
 from time import sleep
@@ -179,6 +180,14 @@ def signal_handler(sig, frame):
 
 
 def end_run(exitcode):
+    # clean up db
+    if random.randrange(1, 11) == 1:
+        if args["verbose"]:
+            print(f"{VERBOSE} Cleaning up DB ...")
+        db.cursor.execute(
+            "VACUUM"
+        )
+
     end = datetime.datetime.now(datetime.timezone.utc)
     db.cursor.execute(
         "UPDATE lastrun SET end=?, exitcode=? WHERE start=?", (end, exitcode, start)
@@ -572,6 +581,12 @@ if __name__ == "__main__":
     start = datetime.datetime.now(datetime.timezone.utc)
     db.cursor.execute(
         "INSERT INTO lastrun (start, parameters) VALUES (?, ?)", (start, str(args))
+    )
+    db.connection.commit()
+
+    # clean error log
+    db.cursor.execute(
+        "DELETE FROM errors WHERE date < ?", (start - datetime.timedelta(days = 2),)
     )
     db.connection.commit()
 
