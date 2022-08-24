@@ -17,6 +17,14 @@ def start_argparse():
         description="This script adds release groups to the *arr apps, or removes them.",
         usage=f"python3 {sys.argv[0]} [-h] ([-s] [[ -a | -r ] GROUP ])"
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_const",
+        const=True,
+        default=False,
+        help="Enable verbose mode.",
+    )
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument(
         "-a",
@@ -44,14 +52,6 @@ def start_argparse():
         const=True,
         default=False,
         help="Check the xREL API for new groups.",
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_const",
-        const=True,
-        default=False,
-        help="Enable verbose mode.",
     )
     
     args = vars(parser.parse_args())

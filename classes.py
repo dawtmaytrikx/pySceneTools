@@ -34,8 +34,8 @@ class FileToCheck(object):
     def __init__(self, dirpath, filename):
         self.dirpath = dirpath
         self.filename = filename
+        self.filepath = os.path.join(dirpath, filename)
         self.releaseName = os.path.splitext(filename)[0]
-        self.releaseGroup = self.releaseName.split("-")[-1]
         self.extension = os.path.splitext(filename)[1].lower()
         self.realName = None
         self.unprocessed = False
