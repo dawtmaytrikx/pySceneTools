@@ -6,8 +6,8 @@ import requests
 import sys
 import time
 
-from conf import *
 from classes import *
+from conf import *
 from constants import *
 
 
@@ -163,7 +163,6 @@ def scan():
             for pvr in pvrs:
                 if not pvr.skip:
                     for index, release in enumerate(xrel):
-                        is_ignored = False
                         if args["verbose"]:
                             print(
                                 f"{VERBOSE} Processing release {release['dirname']} for {pvr.name}. Release #{index}"
@@ -190,15 +189,14 @@ def scan():
                             )
                             sys.exit(1)
 
-                        for ignorepattern in ignorelist:
-                            if ignorepattern in release["dirname"]:
-                                is_ignored = True  # TODO raise IgnoreError
-                                break
-                        if is_ignored == True:
+                        try:
+                            for ignorepattern in ignorelist:
+                                if ignorepattern in release["dirname"]:
+                                    raise IgnoreError
+                        except IgnoreError:
                             print(f"{IGNORED} {release['dirname']} in {pvr.name}.")
                             continue
-                        else:
-                            newrestriction = "-" + release["group_name"]
+                        newrestriction = "-" + release["group_name"]
 
                         # don't process duplicates
                         if newrestriction in pvr.checked:
