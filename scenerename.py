@@ -183,9 +183,7 @@ def end_run(exitcode):
     if random.randrange(1, 11) == 1:
         if args["verbose"]:
             print(f"{VERBOSE} Cleaning up DB ...")
-        db.cursor.execute(
-            "VACUUM"
-        )
+        db.cursor.execute("VACUUM")
 
     end = datetime.datetime.now(datetime.timezone.utc)
     db.cursor.execute(
@@ -229,7 +227,11 @@ def error(errnum, description, fileobj):
 def mislabeled(fileobj):
     newfilepath = os.path.join(fileobj.dirpath, fileobj.realName) + fileobj.extension
     if os.path.exists(newfilepath):
-        error(13, f"Tried renaming {fileobj.releaseName} to {fileobj.realName}, but file already exists!", fileobj)
+        error(
+            13,
+            f"Tried renaming {fileobj.releaseName} to {fileobj.realName}, but file already exists!",
+            fileobj,
+        )
         raise OSError()
     os.rename(fileobj.filepath, newfilepath)
     print(f"{RENAMED} {fileobj.releaseName} -> {fileobj.realName}")
@@ -320,11 +322,7 @@ def process_files(path):
                         print(f"{MATCHED} {fileobj.releaseName}")
 
                 # search for release
-                if (
-                    response.status_code == 404
-                    or not fileobj.page
-                    or fileobj.unprocessed
-                ):
+                if response.status_code == 404 or not fileobj.page:
                     fileobj = search_for_release(fileobj)
 
                 if args["no_comparison"]:
@@ -363,9 +361,7 @@ def process_files(path):
 
                     if record is not None and record[0] is not None:
                         if args["verbose"]:
-                            print(
-                                f"{VERBOSE} Using CRC found in DB: {fileobj.crccalc}"
-                            )
+                            print(f"{VERBOSE} Using CRC found in DB: {fileobj.crccalc}")
                         fileobj.crccalc = record[0]
                     else:
                         if args["verbose"]:
@@ -395,6 +391,7 @@ def process_files(path):
                     db.connection.commit()
                 except sqlite3.ProgrammingError:  # triggers at KeyBoardInterrupt
                     pass
+
 
 def skip_file(fileobj):
     # is this even a media file?
@@ -440,8 +437,6 @@ def skip_file(fileobj):
             raise SkipFileError()
 
         elif record[0] is None or record[0] == "RENAMED":
-            fileobj.unprocessed = True
-
             if args["no_comparison"]:
                 print(f"{SKIPPINGUNPROCESSED} {fileobj.releaseName}")
                 raise SkipFileError()
@@ -467,7 +462,7 @@ def search_for_release(fileobj):
             + urllib.parse.quote_plus(fileobj.releaseName)
             + "\r\n"
             + fileobj.page,
-            fileobj
+            fileobj,
         )
         fileobj = search_by_sample(fileobj)
 
@@ -490,7 +485,7 @@ def search_for_release(fileobj):
                         15,
                         "Filesize does not match that of release "
                         + fileobj.page["name"],
-                        fileobj
+                        fileobj,
                     )
                     fileobj = search_by_sample(fileobj)
             else:
@@ -503,7 +498,7 @@ def search_for_release(fileobj):
                 + fileobj.page["results"][0]["release"]
                 + "\r\n"
                 + json.dumps(fileobj.page, indent=4),
-                fileobj
+                fileobj,
             )
             fileobj = search_by_sample(fileobj)
 
@@ -522,16 +517,11 @@ def search_by_sample(fileobj):
             + urllib.parse.quote_plus(samplename)
         ).json()
 
-        if (
-            "resultsCount" in fileobj.page
-            and int(fileobj.page["resultsCount"]) == 1
-        ):
+        if "resultsCount" in fileobj.page and int(fileobj.page["resultsCount"]) == 1:
             # rename
             fileobj.page = loadpage(
                 "https://api.srrdb.com/v1/details/"
-                + urllib.parse.quote_plus(
-                    fileobj.page["results"][0]["release"]
-                )
+                + urllib.parse.quote_plus(fileobj.page["results"][0]["release"])
             ).json()
 
             try:
@@ -547,14 +537,12 @@ def search_by_sample(fileobj):
                             10,
                             "Filesize does not match that of release "
                             + fileobj.page["name"],
-                            fileobj
+                            fileobj,
                         )
                         fileobj = search_by_crc(fileobj)
                 else:
                     error(
-                        7,
-                        "Multiple files in release " + fileobj.page["name"],
-                        fileobj
+                        7, "Multiple files in release " + fileobj.page["name"], fileobj
                     )
                     fileobj = search_by_crc(fileobj)
             except KeyError:
@@ -564,7 +552,7 @@ def search_by_sample(fileobj):
                     + fileobj.page["results"][0]["release"]
                     + "\r\n"
                     + json.dumps(fileobj.page, indent=4),
-                    fileobj
+                    fileobj,
                 )
                 fileobj = search_by_crc(fileobj)
 
@@ -617,14 +605,12 @@ def search_by_crc(fileobj):  # db
                             9,
                             "Filesize does not match that of release "
                             + fileobj.page["name"],
-                            fileobj
+                            fileobj,
                         )
                         raise ReleaseNotFoundError()
                 else:
                     error(
-                        8,
-                        "Multiple files in release " + fileobj.page["name"],
-                        fileobj
+                        8, "Multiple files in release " + fileobj.page["name"], fileobj
                     )
                     raise ReleaseNotFoundError()
             except KeyError:
@@ -634,7 +620,7 @@ def search_by_crc(fileobj):  # db
                     + fileobj.page["results"][0]["release"]
                     + "\r\n"
                     + json.dumps(fileobj.page, indent=4),
-                    fileobj
+                    fileobj,
                 )
                 raise ReleaseNotFoundError()
     else:
@@ -655,8 +641,7 @@ def upsert_db(fileobj, status):
         relname, origname = fileobj.releaseName, None
 
     db.cursor.execute(
-        "SELECT origname, crccalc, crcweb FROM srrdb WHERE relname=?",
-        (relname,)
+        "SELECT origname, crccalc, crcweb FROM srrdb WHERE relname=?", (relname,)
     )
     record = db.cursor.fetchone()
 
@@ -711,7 +696,7 @@ if __name__ == "__main__":
 
     # clean error log
     db.cursor.execute(
-        "DELETE FROM errors WHERE date < ?", (start - datetime.timedelta(days = 2),)
+        "DELETE FROM errors WHERE date < ?", (start - datetime.timedelta(days=2),)
     )
     db.connection.commit()
 

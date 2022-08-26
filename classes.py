@@ -4,7 +4,10 @@ import sqlite3
 #
 # scene2arr.py
 #
-class IgnoreError(Exception): pass
+class IgnoreError(Exception):
+    pass
+
+
 class PVR(object):
     def __init__(self, name):
         self.url = None
@@ -29,8 +32,14 @@ class DB(object):
 #
 # scenerename.py
 #
-class ReleaseNotFoundError(Exception): pass
-class SkipFileError(Exception): pass
+class ReleaseNotFoundError(Exception):
+    pass
+
+
+class SkipFileError(Exception):
+    pass
+
+
 class FileToCheck(object):
     def __init__(self, dirpath, filename):
         self.dirpath = dirpath
@@ -39,10 +48,8 @@ class FileToCheck(object):
         self.releaseName = os.path.splitext(filename)[0]
         self.extension = os.path.splitext(filename)[1].lower()
         self.realName = None
-        self.unprocessed = False
         self.sizeondisk = None
         self.sizeonsrrdb = None
         self.crccalc = None
         self.crcweb = None
         self.page = None
-
