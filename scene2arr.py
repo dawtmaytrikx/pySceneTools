@@ -15,7 +15,7 @@ def start_argparse():
     # argument parser
     parser = argparse.ArgumentParser(
         description="This script adds release groups to the *arr apps, or removes them.",
-        usage=f"python3 {sys.argv[0]} [-h] ([-s] [[ -a | -r ] GROUP ])"
+        usage=f"python3 {sys.argv[0]} [-h] ([-s] [[ -a | -r ] GROUP ])",
     )
     parser.add_argument(
         "-v",
@@ -53,9 +53,9 @@ def start_argparse():
         default=False,
         help="Check the xREL API for new groups.",
     )
-    
+
     args = vars(parser.parse_args())
-    
+
     if args["add"] or args["remove"]:
         if not args["group"]:
             parser.error("Must enter GROUP if using -a or -r!")
@@ -71,9 +71,9 @@ def create_db(dbname):
     if not os.path.exists(dbname):
         with open(dbname, "w"):
             pass
-    
+
     db = DB(dbname)
-    
+
     db.cursor.execute(
         """CREATE TABLE IF NOT EXISTS scenegroups (
         id INTEGER PRIMARY KEY,
@@ -84,7 +84,7 @@ def create_db(dbname):
         date TEXT
         );"""
     )
-    
+
     db.cursor.execute(
         """CREATE TABLE IF NOT EXISTS latest (
         category TEXT PRIMARY KEY,
@@ -105,7 +105,7 @@ def init_pvrs():
     for pvr in possible_pvrs:
         if pvr.apikey:
             pvrs.append(pvr)
-    
+
     for pvr in pvrs:
         notify_headers = {
             "content-type": "application/json",
@@ -113,15 +113,15 @@ def init_pvrs():
             "X-Api-Key": pvr.apikey,
         }
         pvr.response = requests.get(pvr.url, headers=notify_headers)
-    
+
         if pvr.response.status_code != 200:
             print(f"{ERROR} Something's wrong with {pvr.name}")
             continue
-    
+
         pvr.response = pvr.response.json()
         pvr.required = pvr.response["required"]
         pvr.ignored = pvr.response["ignored"]
-    
+
         if isinstance(pvr.required, str):
             pvr.required = pvr.required.split(",")
         elif not isinstance(pvr.required, list):
@@ -135,7 +135,9 @@ def scan():
     for category in xrel_categories:
         if args["verbose"]:
             print(f"{VERBOSE} Now processing category {category}")
-        db.cursor.execute("SELECT releasedate FROM latest WHERE category = ?", (category,))
+        db.cursor.execute(
+            "SELECT releasedate FROM latest WHERE category = ?", (category,)
+        )
         result = db.cursor.fetchone()
         if result is not None:
             lastprocessed = result[0]
@@ -173,8 +175,8 @@ def scan():
 
                         # stop processing releases after this page
                         if (
-                                release["time"] <= lastprocessed
-                                and pvr.name not in already_processed
+                            release["time"] <= lastprocessed
+                            and pvr.name not in already_processed
                         ):
                             already_processed.append(pvr.name)
 
@@ -208,7 +210,9 @@ def scan():
                         if newrestriction not in pvr.required:
                             pvr.required.append(newrestriction)
                             pvr = update_pvr(pvr, newrestriction, release)
-                            print(f"{ADDED} {newrestriction} to {pvr.name}! Release: {release['dirname']}")
+                            print(
+                                f"{ADDED} {newrestriction} to {pvr.name}! Release: {release['dirname']}"
+                            )
                         else:
                             print(
                                 f"{SKIPPING} {newrestriction} is already in "
@@ -216,10 +220,10 @@ def scan():
                             )
                             continue
 
-            if args['verbose']:
+            if args["verbose"]:
                 print(
-                    f'{VERBOSE} {len(already_processed)} out of {len(pvrs)} '
-                    + 'PVRs have reached their last processed release.'
+                    f"{VERBOSE} {len(already_processed)} out of {len(pvrs)} "
+                    + "PVRs have reached their last processed release."
                 )
             # will only trigger after all pvrs reached the previously processed release
             # and will process the rest of the page, since sometimes releases are backfilled.
@@ -261,7 +265,7 @@ def add_remove():
                 if newrestriction not in pvr.required:
                     pvr.required.append(newrestriction)
                     pvr = update_pvr(pvr, newrestriction)
-                    print(f'{ADDED} {newrestriction} to {pvr.name}!')
+                    print(f"{ADDED} {newrestriction} to {pvr.name}!")
                 else:
                     print(f"{INFO} {newrestriction} is already in {pvr.name}!")
                     continue
@@ -271,7 +275,7 @@ def add_remove():
                 if newrestriction in pvr.required:
                     pvr.required.remove(newrestriction)
                     pvr = update_pvr(pvr, newrestriction)
-                    print(f'{REMOVED} {newrestriction} from {pvr.name}!')
+                    print(f"{REMOVED} {newrestriction} from {pvr.name}!")
                 else:
                     print(f"{INFO} {newrestriction} was not in {pvr.name}!")
                     continue
@@ -280,9 +284,11 @@ def add_remove():
 def update_pvr(pvr, newrestriction, release=None):
     pvr.required = list(dict.fromkeys(pvr.required))  # remove duplicates
     if isinstance(pvr.response["required"], str):
-        pvr.response['required'] = ",".join(pvr.required)  # convert list back to str for radarr
+        pvr.response["required"] = ",".join(
+            pvr.required
+        )  # convert list back to str for radarr
     else:
-        pvr.response['required'] = pvr.required
+        pvr.response["required"] = pvr.required
     notify_data = pvr.response
     notify_headers = {
         "content-type": "application/json",
@@ -333,14 +339,14 @@ def update_pvr(pvr, newrestriction, release=None):
 
 if __name__ == "__main__":
     args = start_argparse()
-    
+
     db = create_db("scene2arr.db")
-    
+
     pvrs = init_pvrs()
 
     if args["scan"]:
         scan()
     elif args["add"] or args["remove"]:
         add_remove()
-    
+
     db.connection.close()
