@@ -1,5 +1,7 @@
 *.db
+*.log
 conf.py
+irc2arr.yml
 test
 .venv
 .vscode
