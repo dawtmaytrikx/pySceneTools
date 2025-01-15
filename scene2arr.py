@@ -131,7 +131,7 @@ def init_pvrs():
     return pvrs
 
 
-def scan():
+def scan(args, db, pvrs):
     for category in xrel_categories:
         if args["verbose"]:
             print(f"{VERBOSE} Now processing category {category}")
@@ -209,7 +209,7 @@ def scan():
                         # don't process release, if group is already whitelisted
                         if newrestriction not in pvr.required:
                             pvr.required.append(newrestriction)
-                            pvr = update_pvr(pvr, newrestriction, release)
+                            pvr = update_pvr(args, db, pvr, newrestriction, release)
                             print(
                                 f"{ADDED} {newrestriction} to {pvr.name}! Release: {release['dirname']}"
                             )
@@ -251,7 +251,7 @@ def scan():
             print(f"{INFO} Nothing to do in category {category}.")
 
 
-def add_remove():
+def add_remove(args, db, pvrs):
     newrestriction = "-" + "".join(args["group"])
     if args["verbose"]:
         print(f"{VERBOSE} Group: {newrestriction}")
@@ -264,7 +264,7 @@ def add_remove():
                     print(f"{VERBOSE} Adding {newrestriction} to {pvr.name}!")
                 if newrestriction not in pvr.required:
                     pvr.required.append(newrestriction)
-                    pvr = update_pvr(pvr, newrestriction)
+                    pvr = update_pvr(args, db, pvr, newrestriction)
                     print(f"{ADDED} {newrestriction} to {pvr.name}!")
                 else:
                     print(f"{INFO} {newrestriction} is already in {pvr.name}!")
@@ -274,14 +274,14 @@ def add_remove():
                     print(f"{VERBOSE} Removing {newrestriction} from {pvr.name}")
                 if newrestriction in pvr.required:
                     pvr.required.remove(newrestriction)
-                    pvr = update_pvr(pvr, newrestriction)
+                    pvr = update_pvr(args, db, pvr, newrestriction)
                     print(f"{REMOVED} {newrestriction} from {pvr.name}!")
                 else:
                     print(f"{INFO} {newrestriction} was not in {pvr.name}!")
                     continue
 
 
-def update_pvr(pvr, newrestriction, release=None):
+def update_pvr(args, db, pvr, newrestriction, release=None):
     pvr.required = list(dict.fromkeys(pvr.required))  # remove duplicates
     if isinstance(pvr.response["required"], str):
         pvr.response["required"] = ",".join(
@@ -336,8 +336,7 @@ def update_pvr(pvr, newrestriction, release=None):
 
     return pvr
 
-
-if __name__ == "__main__":
+def main():
     args = start_argparse()
 
     db = create_db("scene2arr.db")
@@ -345,8 +344,11 @@ if __name__ == "__main__":
     pvrs = init_pvrs()
 
     if args["scan"]:
-        scan()
+        scan(args, db, pvrs)
     elif args["add"] or args["remove"]:
-        add_remove()
+        add_remove(args, db, pvrs)
 
     db.connection.close()
+
+if __name__ == "__main__":
+    main()

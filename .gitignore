@@ -1,4 +1,6 @@
 *.db
 conf.py
 test
-venv
+.venv
+.vscode
+__pycache__

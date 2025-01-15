@@ -21,7 +21,7 @@ radarr4k.url = "https://radarr4k:7878/api/v3/releaseprofile/1"
 radarr4k.apikey = ""
 
 
-# see https://api.xrel.to/v2/release/categories.xml for a list of possible categories
+# see https://api.xrel.to/v2/release/categories.xml for a list of available categories
 xrel_categories = (
     "ENGLISH",       # contains English language TV and MOViE releases
 )
