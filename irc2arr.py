@@ -23,6 +23,7 @@ import logging
 
 from classes import *
 from constants import *
+import scene2arr
 
 def start_argparse(): # TODO: Actually make this work
     # argument parser
@@ -48,12 +49,12 @@ def start_argparse(): # TODO: Actually make this work
         help="Create a pre database by listening in pre channels.",
     )
     action.add_argument(
-        "-s",
-        "--scan",
+        "-a",
+        "--arr",
         action="store_const",
         const=True,
         default=False,
-        help="Listens for new releases in the prechans, extracts the group name, and adds it to the *arr instance.",
+        help="Pirate mode. Listens for new releases in the prechans, extracts the group name, and adds it to the *arr instances configured in conf.py.",
     )
 
     args = vars(parser.parse_args())
@@ -71,6 +72,7 @@ logger = logging.getLogger(__name__)
 class IRCBot(irc.bot.SingleServerIRCBot):
     def __init__(
         self,
+        args,
         name,
         server,
         port,
@@ -82,6 +84,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         nickserv_command,
         password=None,
     ):
+        self.args = args
         self.name = name
         self.server = server
         self.port = port
@@ -104,9 +107,10 @@ class IRCBot(irc.bot.SingleServerIRCBot):
 
         self.intentional_disconnect = False
         self.connection.set_keepalive(30)
-
-        with sqlite3.connect(IRC2ARR_DB_FILE, check_same_thread=False) as conn:
-            self.conn = conn
+        
+        if args["predb"]:
+            with sqlite3.connect(IRC2ARR_DB_FILE, check_same_thread=False) as conn:
+                self.conn = conn
 
         # we want a shared lock for all threads, so it is actually created outside of this class
         try:
@@ -181,18 +185,32 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                         for current_regex in regexes:
                             regex = channel.get(current_regex, None)
                             if current_regex == "pre_regex":
-                                self.process_pre_regex(c, e, message, regex, channel, currenttime)
+                                if args["predb"]:
+                                    self.process_pre_regex(c, e, message, regex, channel, currenttime)
+                                if args["arr"]:
+                                    self.add_to_arr(c, e, message, regex, channel)
                                 break
-                            elif current_regex == "nuke_regex":
+                            elif current_regex == "nuke_regex" and args["predb"]:
                                 self.process_nuke_regex(c, e, message, regex, channel, currenttime)
                                 break
-                            elif current_regex == "info_regex":
+                            elif current_regex == "info_regex" and args["predb"]:
                                 self.process_info_regex(c, e, message, regex, channel, currenttime)
                                 break
         except Exception as exc:
             exc_info = (type(exc), exc, exc.__traceback__)
             logger.error(message, exc_info=exc_info)
 
+    def add_to_arr(self, c, e, message, regex, channel):
+        if regex is not None and re.match(regex, message):
+            result = preparse(message, channel)
+            # TODO: parse release name and filter by section
+        else:
+            return
+        release_name = result["release"]
+        group_name = extract_groupname(release_name)
+        print(f"Adding {group_name} to *arr instances")
+        scene2arr.main(add=True, group=group_name)
+    
     def process_pre_regex(self, c, e, message, regex, channel, currenttime):
         if regex is not None and re.match(regex, message):
             result = preparse(message, channel)
@@ -341,16 +359,15 @@ class IRCBot(irc.bot.SingleServerIRCBot):
 
 
 def create_db(dbname):
-    import sqlite3
+    # set up the database
+    if not os.path.exists(dbname):
+        with open(dbname, "w"):
+            pass
 
-    # Connect to the database (or create it if it doesn't exist)
-    conn = sqlite3.connect(dbname)
-
-    # Create a cursor object to execute SQL statements
-    cursor = conn.cursor()
+    db = DB(dbname)
 
     # Define the SQL statement to create the table
-    cursor.execute(
+    db.cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS pre (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -365,7 +382,7 @@ def create_db(dbname):
         """
     )
 
-    cursor.execute(
+    db.cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS nuke (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -380,10 +397,10 @@ def create_db(dbname):
     )
 
     # Commit the changes to the database
-    conn.commit()
+    db.conn.commit()
 
     # Close the connection to the database
-    conn.close()
+    db.conn.close()
 
 
 def preparse(message, channel): # TODO: Add release parser to identify the proper section
@@ -400,6 +417,8 @@ def preparse(message, channel): # TODO: Add release parser to identify the prope
             )
         except IndexError:
             continue
+    
+    # nope, not gonna rely on the section in the pre message, this is just temporary
     categories = {
         "GAMES": "Games",
         "MP3": "Music",
@@ -467,15 +486,18 @@ def infoparse(message, channel):
 
     return result
 
+def extract_groupname(release_name):
+        return release_name.split('-')[-1]
 
 def main(args):
-    try: # TODO: Move constants to constants.py
+    try:
         with open(IRC2ARR_CONFIG_FILE, "r") as ymlfile:
             cfg = yaml.safe_load(ymlfile)
     except Exception as e:
         print("Error loading irc2arr.yml:", e)
         sys.exit(1)
-    create_db(IRC2ARR_DB_FILE)
+    if args["predb"]:
+        create_db(IRC2ARR_DB_FILE)
     IRCBot.lock = threading.Lock()
     threads = []
     bots = []
@@ -491,6 +513,7 @@ def main(args):
         nickserv_command = server.get("nickserv_command", None)
         channels = server["channels"]
         bot = IRCBot(
+            args,
             name,
             host,
             port,
@@ -551,5 +574,5 @@ if __name__ == "__main__":
     c.execute("VACUUM")
     conn.close()
     '''
-    args = None # start_argparse()
+    args = start_argparse()
     main(args)

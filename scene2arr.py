@@ -336,8 +336,9 @@ def update_pvr(args, db, pvr, newrestriction, release=None):
 
     return pvr
 
-def main():
-    args = start_argparse()
+def main(args=None):
+    if args is None:
+        args = start_argparse()
 
     db = create_db(SCENE2ARR_DB_FILE)
 
