@@ -339,7 +339,7 @@ def update_pvr(args, db, pvr, newrestriction, release=None):
 def main():
     args = start_argparse()
 
-    db = create_db("scene2arr.db")
+    db = create_db(SCENE2ARR_DB_FILE)
 
     pvrs = init_pvrs()
 

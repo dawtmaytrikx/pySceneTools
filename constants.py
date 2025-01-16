@@ -1,6 +1,24 @@
 from colorama import Fore
 
+#
+# ircarr.py
+#
+IRC2ARR_DB_FILE = "irc2arr.db"
+IRC2ARR_CONFIG_FILE = "irc2arr.json"
 
+#
+# scene2arr.py
+#
+SCENE2ARR_DB_FILE = "scene2arr.db"
+
+#
+# scenerename.py
+#
+SCENERENAME_DB_FILE = "scenerename.db"
+
+#
+# scene2arr.py, scenerename.py
+#
 VERBOSE = f"{Fore.YELLOW}VERBOSE:{Fore.RESET}"
 ERROR = f"{Fore.RED}ERROR:{Fore.RESET}"
 RENAMED = f"{Fore.BLUE}RENAMED:{Fore.RESET}"

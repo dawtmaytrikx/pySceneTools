@@ -44,7 +44,7 @@ suffixes = [  # common additions from usenet
     "-Rakuv",
 ]
 skiptags = [  # hardcoded blacklist, add p2p groups
-    "dirfix",
+    "dirfix", # a dirfix release doesn't include the actual data
     "_S0",
     "_S1",
     "-d0rks",
@@ -687,7 +687,7 @@ if __name__ == "__main__":
         print(args)
 
     # set up database
-    db = create_db("scenerename.db")
+    db = create_db(SCENERENAME_DB_FILE)
     start = datetime.datetime.now(datetime.timezone.utc)
     db.cursor.execute(
         "INSERT INTO lastrun (start, parameters) VALUES (?, ?)", (start, str(args))

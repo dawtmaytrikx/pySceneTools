@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 # Pre DB dumps can be found at:
 # https://defacto2.net/search/file > search for "database"
 # https://the-eye.eu/public/Piracy/
@@ -17,9 +19,10 @@ import irc.connection
 import irc.client
 
 import argparse
-
-
 import logging
+
+from classes import *
+from constants import *
 
 def start_argparse(): # TODO: Actually make this work
     # argument parser
@@ -102,7 +105,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         self.intentional_disconnect = False
         self.connection.set_keepalive(30)
 
-        with sqlite3.connect("irc2arr.db", check_same_thread=False) as conn:
+        with sqlite3.connect(IRC2ARR_DB_FILE, check_same_thread=False) as conn:
             self.conn = conn
 
         # we want a shared lock for all threads, so it is actually created outside of this class
@@ -467,12 +470,12 @@ def infoparse(message, channel):
 
 def main(args):
     try: # TODO: Move constants to constants.py
-        with open("irc2arr.yml", "r") as ymlfile:
+        with open(IRC2ARR_CONFIG_FILE, "r") as ymlfile:
             cfg = yaml.safe_load(ymlfile)
     except Exception as e:
         print("Error loading irc2arr.yml:", e)
         sys.exit(1)
-    create_db("irc2arr.db")
+    create_db(IRC2ARR_DB_FILE)
     IRCBot.lock = threading.Lock()
     threads = []
     bots = []
