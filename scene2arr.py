@@ -46,8 +46,8 @@ def start_argparse():
         "group", metavar="GROUP", type=str, nargs="?", help="Name of release group."
     )
     action.add_argument(
-        "-s",
-        "--scan",
+        "-x",
+        "--xrel",
         action="store_const",
         const=True,
         default=False,
@@ -344,7 +344,7 @@ def main(args=None):
 
     pvrs = init_pvrs()
 
-    if args["scan"]:
+    if args["xrel"]:
         scan(args, db, pvrs)
     elif args["add"] or args["remove"]:
         add_remove(args, db, pvrs)
