@@ -1,14 +1,17 @@
 # pySceneTools
 
 ## scene2arr.py
-This script lets you add new scene groups to a sonarr release profile / radarr
-restriction as a required tag.
+This script lets you add new scene groups to a *arr release profiles as a required 
+tag, ensuring only releases from these groups are downloaded.
 
 ### setup
 Initially `conf.py.example` needs to be renamed to `conf.py` and filled with the
 URLs to the *arr APIs and respective API keys. The `/1` at the end of the URLs
 in the example refer to the id of the release profile or restriction in the
-sonarr/radarr database. Check those databases to find the correct ID.
+sonarr/radarr database. Check those databases to find the correct ID:
+```
+sqlite3 sonarr.db "SELECT id, name FROM releaseprofiles;"
+```
 
 Additionally, install the required Python packages by running:
 ```
@@ -34,8 +37,8 @@ optional arguments:
 ```
 
 Using `-x` will check the xREL API for new scene groups and automatically add
-new groups as they appear (**⚠️ Breaking Change: The `-x` option used to be
-called `-s` / `--scan`. Please update your scripts accordingly!**). It's
+new groups as they appear. (**⚠️ Breaking Change: The `-x` option used to be
+called `-s` / `--scan`. Please update your scripts accordingly!**) It's
 recommended to run the script once manually and then add a cronjob that runs the
 script every minute. The xREL API allows for 300 hits per hour, which lets you
 check all 50 pages of up to 6 categories.
