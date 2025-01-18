@@ -7,8 +7,6 @@
 import datetime
 import json
 import random
-import re
-import sqlite3
 import ssl
 import subprocess
 import sys
@@ -185,28 +183,27 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                         ):
                             logger.error(f"{c.server}/{e.target} - {message}")
                         regexes = ("pre_regex", "nuke_regex", "info_regex")
+                        parser = ircMessageParser(channel)
                         for current_regex in regexes:
-                            regex = channel.get(current_regex, None)
                             if current_regex == "pre_regex":
                                 if args["predb"]:
-                                    self.process_pre_regex(c, e, message, regex, channel, currenttime)
+                                    self.process_pre_regex(c, e, message, parser, currenttime)
                                 if args["arr"]:
-                                    self.add_to_arr(c, e, message, regex, channel)
+                                    self.add_to_arr(c, e, message, parser, channel)
                                 break
                             elif current_regex == "nuke_regex" and args["predb"]:
-                                self.process_nuke_regex(c, e, message, regex, channel, currenttime)
+                                self.process_nuke_regex(c, e, message, parser, currenttime)
                                 break
                             elif current_regex == "info_regex" and args["predb"]:
-                                self.process_info_regex(c, e, message, regex, channel, currenttime)
+                                self.process_info_regex(c, e, message, parser, currenttime)
                                 break
         except Exception as exc:
             exc_info = (type(exc), exc, exc.__traceback__)
             logger.error(message, exc_info=exc_info)
 
-    def add_to_arr(self, c, e, message, regex, channel):
-        if regex is not None and re.match(regex, message):
-            result = preparse(message, channel)
-        else:
+    def add_to_arr(self, c, e, message, parser, channel):
+        result = parser.preparse(message)
+        if not result:
             return
         release_name = result["release"]
         section = result["section"]
@@ -252,151 +249,154 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         print(f"Adding {group_name} to *arr instances")
         scene2arr.main({"add": True, "group": group_name, "remove": False, "scan": False, "verbose": False})
     
-    def process_pre_regex(self, c, e, message, regex, channel, currenttime):
-        if regex is not None and re.match(regex, message):
-            result = preparse(message, channel)
-            try:
-                self.lock.acquire()
-                cursor = self.conn.cursor()
+    def process_pre_regex(self, c, e, message, parser, currenttime):
+        result = parser.preparse(message)
+        if not result:
+            return
+        try:
+            self.lock.acquire()
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT release FROM pre WHERE release=?",
+                (result["release"],),
+            )
+            row = cursor.fetchone()
+            if not row:
                 cursor.execute(
-                    "SELECT release FROM pre WHERE release=?",
-                    (result["release"],),
+                    """
+                    INSERT INTO pre (release, category, source, time)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        result["release"],
+                        result["category"],
+                        f"{c.server}/{e.target}",
+                        currenttime,
+                    ),
                 )
-                row = cursor.fetchone()
-                if not row:
-                    cursor.execute(
-                        """
-                        INSERT INTO pre (release, category, source, time)
-                        VALUES (?, ?, ?, ?)
-                        """,
-                        (
-                            result["release"],
-                            result["category"],
-                            f"{c.server}/{e.target}",
-                            currenttime,
-                        ),
-                    )
-                self.conn.commit()
-            except sqlite3.Error as error:
-                print(f"{c.server}/{e.target} - {error} - {message}")
-            finally:
-                cursor.close()
-                self.lock.release()
+            self.conn.commit()
+        except sqlite3.Error as error:
+            print(f"{c.server}/{e.target} - {error} - {message}")
+        finally:
+            cursor.close()
+            self.lock.release()
 
-    def process_nuke_regex(self, c, e, message, regex, channel, currenttime):
-        if regex is not None and re.match(regex, message):
-            result = nukeparse(message, channel)
-            try:
-                self.lock.acquire()
-                cursor = self.conn.cursor()
+    def process_nuke_regex(self, c, e, message, parser, currenttime):
+        result = parser.nukeparse(message)
+        if not result:
+            return
+        try:
+            self.lock.acquire()
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """SELECT release, type, reason, nukenet FROM nuke 
+                WHERE release=? AND type=? AND reason=?""",
+                (
+                    result["release"],
+                    result["type"],
+                    result["reason"],
+                ),
+            )
+            row = cursor.fetchone()
+            if not row:
                 cursor.execute(
-                    """SELECT release, type, reason, nukenet FROM nuke 
-                    WHERE release=? AND type=? AND reason=?""",
+                    """
+                    INSERT INTO nuke (release, type, reason, nukenet, source, time)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
                     (
                         result["release"],
                         result["type"],
                         result["reason"],
+                        result["nukenet"],
+                        f"{c.server}/{e.target}",
+                        currenttime,
                     ),
                 )
-                row = cursor.fetchone()
-                if not row:
+            else:
+                if not row[3]:
                     cursor.execute(
                         """
-                        INSERT INTO nuke (release, type, reason, nukenet, source, time)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        """,
+                        UPDATE nuke SET nukenet=? 
+                        WHERE release=? AND type=? AND reason=?""",
                         (
+                            result["nukenet"],
                             result["release"],
                             result["type"],
                             result["reason"],
-                            result["nukenet"],
+                        ),
+                    )
+            self.conn.commit()
+        except sqlite3.Error as error:
+            print(f"{c.server}/{e.target} - {error} - {message}")
+        finally:
+            cursor.close()
+            self.lock.release()
+
+    def process_info_regex(self, c, e, message, parser, currenttime):
+        result = parser.infoparse(message)
+        if not result:
+            return
+        try:
+            self.lock.acquire()
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT release, size, files, genre FROM pre WHERE release=?",
+                (result["release"],),
+            )
+            row = cursor.fetchone()
+            if not row:
+                if result["type"].lower() == "info":
+                    cursor.execute(
+                        """
+                        INSERT INTO pre (release, size, files, source, time)
+                        VALUES (?, ?, ?, ?, ?)""",
+                        (
+                            result["release"],
+                            result["size"],
+                            result["files"],
                             f"{c.server}/{e.target}",
                             currenttime,
                         ),
                     )
-                else:
-                    if not row[3]:
-                        cursor.execute(
-                            """
-                            UPDATE nuke SET nukenet=? 
-                            WHERE release=? AND type=? AND reason=?""",
-                            (
-                                result["nukenet"],
-                                result["release"],
-                                result["type"],
-                                result["reason"],
-                            ),
-                        )
-                self.conn.commit()
-            except sqlite3.Error as error:
-                print(f"{c.server}/{e.target} - {error} - {message}")
-            finally:
-                cursor.close()
-                self.lock.release()
-
-    def process_info_regex(self, c, e, message, regex, channel, currenttime):
-        if regex is not None and re.match(regex, message):
-            result = infoparse(message, channel)
-            try:
-                self.lock.acquire()
-                cursor = self.conn.cursor()
-                cursor.execute(
-                    "SELECT release, size, files, genre FROM pre WHERE release=?",
-                    (result["release"],),
-                )
-                row = cursor.fetchone()
-                if not row:
-                    if result["type"].lower() == "info":
-                        cursor.execute(
-                            """
-                            INSERT INTO pre (release, size, files, source, time)
-                            VALUES (?, ?, ?, ?, ?)""",
-                            (
-                                result["release"],
-                                result["size"],
-                                result["files"],
-                                f"{c.server}/{e.target}",
-                                currenttime,
-                            ),
-                        )
+                if result["type"].lower() == "genre":
+                    cursor.execute(
+                        """
+                        INSERT INTO pre (release, genre, source, time)
+                        VALUES (?, ?, ?, ?)""",
+                        (
+                            result["release"],
+                            result["genre"],
+                            f"{c.server}/{e.target}",
+                            currenttime,
+                        ),
+                    )
+            else:
+                if not row[3] or len(row[3]) == 1:
                     if result["type"].lower() == "genre":
                         cursor.execute(
-                            """
-                            INSERT INTO pre (release, genre, source, time)
-                            VALUES (?, ?, ?, ?)""",
+                            "UPDATE pre SET genre=? WHERE release=?",
                             (
-                                result["release"],
                                 result["genre"],
-                                f"{c.server}/{e.target}",
-                                currenttime,
+                                result["release"],
                             ),
                         )
-                else:
-                    if not row[3] or len(row[3]) == 1:
-                        if result["type"].lower() == "genre":
-                            cursor.execute(
-                                "UPDATE pre SET genre=? WHERE release=?",
-                                (
-                                    result["genre"],
-                                    result["release"],
-                                ),
-                            )
-                    if not row[1] and not row[2]:
-                        if result["type"].lower() == "info":
-                            cursor.execute(
-                                "UPDATE pre SET size=?, files=? WHERE release=?",
-                                (
-                                    result["size"],
-                                    result["files"],
-                                    result["release"],
-                                ),
-                            )
-                self.conn.commit()
-            except sqlite3.Error as error:
-                print(f"{c.server}/{e.target} - {error} - {message}")
-            finally:
-                cursor.close()
-                self.lock.release()
+                if not row[1] and not row[2]:
+                    if result["type"].lower() == "info":
+                        cursor.execute(
+                            "UPDATE pre SET size=?, files=? WHERE release=?",
+                            (
+                                result["size"],
+                                result["files"],
+                                result["release"],
+                            ),
+                        )
+            self.conn.commit()
+        except sqlite3.Error as error:
+            print(f"{c.server}/{e.target} - {error} - {message}")
+        finally:
+            cursor.close()
+            self.lock.release()
 
 
 def create_db(dbname):
@@ -443,61 +443,6 @@ def create_db(dbname):
     # Close the connection to the database
     db.conn.close()
 
-
-def preparse(message, channel):
-    regex = channel.get("pre_regex", None)
-
-    result = {}
-    for group in ["release", "section"]:
-        try:
-            #if channel[f"pre_regex_{group}"]:
-            result[group] = (
-                re.match(regex, message).group(channel[f"pre_regex_{group}"])
-                if regex is not None and channel[f"pre_regex_{group}"] is not None
-                else None
-            )
-        except IndexError:
-            continue
-    
-    #result["parsed"] = ReleaseParser(result["release"], section).data
-
-    return result
-
-
-def nukeparse(message, channel):
-    regex = channel.get("nuke_regex", None)
-
-    result = {}
-    for group in ["release", "type", "reason", "nukenet"]:
-        try:
-            #if channel[f"nuke_regex_{group}"]:
-            result[group] = (
-                re.match(regex, message).group(channel[f"nuke_regex_{group}"])
-                if regex is not None and channel[f"nuke_regex_{group}"] is not None
-                else None
-            )
-        except IndexError:
-            continue
-
-    return result
-
-
-def infoparse(message, channel):
-    regex = channel.get("info_regex", None)
-
-    result = {}
-    for group in ["release", "type", "genre", "size", "files"]:
-        try:
-            if channel[f"info_regex_{group}"]:
-                result[group] = (
-                    re.match(regex, message).group(channel[f"info_regex_{group}"])
-                    if regex is not None
-                    else None
-                )
-        except IndexError:
-            continue
-
-    return result
 
 def main(args):
     try:

@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 
 #
@@ -18,6 +19,60 @@ class PVR(object):
         self.checked = []
         self.skip = False
         self.name = name
+
+
+class ircMessageParser:
+    def __init__(self, channel):
+        self.channel = channel
+
+    def preparse(self, message):
+        regex = self.channel.get("pre_regex", None)
+
+        result = {}
+        for group in ["release", "section"]:
+            try:
+                result[group] = (
+                    re.match(regex, message).group(self.channel[f"pre_regex_{group}"])
+                    if regex is not None and self.channel[f"pre_regex_{group}"] is not None
+                    else None
+                )
+            except IndexError:
+                continue
+
+        return result
+
+    def nukeparse(self, message):
+        regex = self.channel.get("nuke_regex", None)
+
+        result = {}
+        for group in ["release", "type", "reason", "nukenet"]:
+            try:
+                result[group] = (
+                    re.match(regex, message).group(self.channel[f"nuke_regex_{group}"])
+                    if regex is not None and self.channel[f"nuke_regex_{group}"] is not None
+                    else None
+                )
+            except IndexError:
+                continue
+
+        return result
+
+    def infoparse(self, message):
+        regex = self.channel.get("info_regex", None)
+
+        result = {}
+        for group in ["release", "type", "genre", "size", "files"]:
+            try:
+                if self.channel[f"info_regex_{group}"]:
+                    result[group] = (
+                        re.match(regex, message).group(self.channel[f"info_regex_{group}"])
+                        if regex is not None
+                        else None
+                    )
+            except IndexError:
+                continue
+
+        return result
 
 
 #
