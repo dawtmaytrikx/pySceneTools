@@ -5,10 +5,12 @@
 # https://the-eye.eu/public/Piracy/
 
 import datetime
+import json
 import random
 import re
 import sqlite3
 import ssl
+import subprocess
 import sys
 import threading
 import time
@@ -22,6 +24,7 @@ import argparse
 import logging
 
 from classes import *
+from conf import *
 from constants import *
 import scene2arr
 
@@ -29,7 +32,7 @@ def start_argparse(): # TODO: Actually make this work
     # argument parser
     parser = argparse.ArgumentParser(
         description="This script runs an IRC bot that can parse pre, nuke, and info messages from IRC channels to build a pre database, and add new groups to your *arr instances.",
-        usage=f"python3 {sys.argv[0]} [-h] [-p] [-s] [-v]",
+        usage=f"python3 {sys.argv[0]} [-h] [-p] [-a] [-v]",
     )
     parser.add_argument(
         "-v",
@@ -203,13 +206,51 @@ class IRCBot(irc.bot.SingleServerIRCBot):
     def add_to_arr(self, c, e, message, regex, channel):
         if regex is not None and re.match(regex, message):
             result = preparse(message, channel)
-            # TODO: parse release name and filter by section
         else:
             return
         release_name = result["release"]
-        group_name = extract_groupname(release_name)
+        section = result["section"]
+        # Call the PHP script to get the type of release
+        try:
+            output = subprocess.check_output(['php', 'parserelease.php', release_name, section], text=True).strip()
+            data = json.loads(output)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error calling PHP script: {e}")
+            return
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding JSON output: {e}")
+            return
+        
+        # Discard irrelevant releases
+        type = data.get("type")
+        if type not in irc_types:
+            return
+        
+        # Handle different types of languages
+        language = data.get("language")
+        if language is None:
+            language = set()
+        elif isinstance(language, dict):
+            language = set(language.keys())
+        else:
+            raise ValueError("Unexpected type for languages")
+
+        # Check if languages match any set in irc_languages
+        for irc_language in irc_languages:
+            if language == irc_language:
+                break
+        else:
+            return
+        
+        # Check if the release is in the correct format
+        format = data.get("format")
+        if format not in irc_formats:
+            return
+
+        print(data)
+        group_name = data.get("group")
         print(f"Adding {group_name} to *arr instances")
-        scene2arr.main(add=True, group=group_name)
+        scene2arr.main({"add": True, "group": group_name, "remove": False, "scan": False, "verbose": False})
     
     def process_pre_regex(self, c, e, message, regex, channel, currenttime):
         if regex is not None and re.match(regex, message):
@@ -403,11 +444,11 @@ def create_db(dbname):
     db.conn.close()
 
 
-def preparse(message, channel): # TODO: Add release parser to identify the proper section
+def preparse(message, channel):
     regex = channel.get("pre_regex", None)
 
     result = {}
-    for group in ["release", "category"]:
+    for group in ["release", "section"]:
         try:
             #if channel[f"pre_regex_{group}"]:
             result[group] = (
@@ -418,35 +459,7 @@ def preparse(message, channel): # TODO: Add release parser to identify the prope
         except IndexError:
             continue
     
-    # nope, not gonna rely on the section in the pre message, this is just temporary
-    categories = {
-        "GAMES": "Games",
-        "MP3": "Music",
-        "FLAC": "Music",
-        "MUSIC": "Music",
-        "TV": "TV",
-        "ANIME": "Anime",
-        "EBOOK": "eBook",
-        "ABOOK": "aBook",
-        "XXX": "XXX",
-        "MVID": "MusicVideo",
-        "MOVIE": "Movie",
-        "FONT": "Font",
-        "APPS": "App",
-        "0DAY": "App",
-        "X264": "Movie",
-        "X265": "Movie",
-        "BLURAY": "Movie",
-    }
-
-    for key, value in categories.items():
-        if key.lower() in result["category"].lower():
-            category = value
-            break
-        else:
-            category = None
-
-    #result["parsed"] = ReleaseParser(result["release"], category).data
+    #result["parsed"] = ReleaseParser(result["release"], section).data
 
     return result
 
@@ -485,9 +498,6 @@ def infoparse(message, channel):
             continue
 
     return result
-
-def extract_groupname(release_name):
-        return release_name.split('-')[-1]
 
 def main(args):
     try:
@@ -555,8 +565,8 @@ if __name__ == "__main__":
     c.execute("BEGIN TRANSACTION")
     c.execute("ALTER TABLE pre RENAME TO old_pre")
     c.execute(
-        'CREATE TABLE IF NOT EXISTS pre (id INTEGER PRIMARY KEY, release TEXT, category TEXT, size TEXT, files INTEGER, genre TEXT, source TEXT, time TEXT, CONSTRAINT release UNIQUE (release))')
-    c.execute("INSERT INTO pre (id, release, category, source, time) SELECT id, release, category, serverchannel, time FROM old_pre")
+        'CREATE TABLE IF NOT EXISTS pre (id INTEGER PRIMARY KEY, release TEXT, section TEXT, size TEXT, files INTEGER, genre TEXT, source TEXT, time TEXT, CONSTRAINT release UNIQUE (release))')
+    c.execute("INSERT INTO pre (id, release, section, source, time) SELECT id, release, category, serverchannel, time FROM old_pre")
     c.execute("select release, size, files, genre from info")
     rows = c.fetchall()
     for row in rows:

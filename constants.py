@@ -4,7 +4,7 @@ from colorama import Fore
 # ircarr.py
 #
 IRC2ARR_DB_FILE = "irc2arr.db"
-IRC2ARR_CONFIG_FILE = "irc2arr.json"
+IRC2ARR_CONFIG_FILE = "irc2arr.yml"
 
 #
 # scene2arr.py

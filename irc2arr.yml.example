@@ -11,7 +11,7 @@ servers:
     channels:
       - name: '#pre'
         pre_regex: '\(PRE\) \(([\w-]+)\) \(([\w.\(\)-]*)\)'
-        pre_regex_category: 1
+        pre_regex_section: 1
         pre_regex_release: 2
         nuke_regex: '\(((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE)\) \(([\w.\(\)-]+)\) \(([\w.\(\)-]*)\)'
         nuke_regex_type: 1
@@ -41,7 +41,7 @@ servers:
     channels:
       - name: '#pre'
         pre_regex: '\[PRE\] \[([\w-]*)\] ([\w._\(\)-]*)'
-        pre_regex_category: 1
+        pre_regex_section: 1
         pre_regex_release: 2
         nuke_regex: '\[((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE)\] ([\w.\(\)-]*) \[([\w.\(\)-]*)\] ([\w]*)'
         nuke_regex_type: 1
@@ -62,13 +62,13 @@ servers:
     channels:
       - name: '#pre'
         pre_regex: '\( PRE \) \( ([\w-]*) \) ([\w._\(\)-]*)'
-        pre_regex_category: 1
+        pre_regex_section: 1
         pre_regex_release: 2
         author: Trac3rs
         password:
       - name: '#pre-spam'
         pre_regex: '\( PRE \) \( ([\w-]*) \) ([\w._\(\)-]*)'
-        pre_regex_category: 1
+        pre_regex_section: 1
         pre_regex_release: 2
         author: Trac3rs
         password:
@@ -98,7 +98,7 @@ servers:
     channels:
       - name: '#pre'
         pre_regex: 'PRE: \[([\w-]*)\] ([\w._\(\)-]*)'
-        pre_regex_category: 1
+        pre_regex_section: 1
         pre_regex_release: 2
         nuke_regex: '((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE): ([\w.\(\)-]*) \[([\w.\(\)-]*)\] \[([\w]*)\]'
         nuke_regex_type: 1
