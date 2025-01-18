@@ -126,12 +126,12 @@ class IRCBot(irc.bot.SingleServerIRCBot):
             except Exception as e:
                 if not self.intentional_disconnect:
                     time.sleep(5)  # Basic backoff
-                    print(f"{self.name}: Attempting to reconnect...")
+                    logger.warning(f"{self.server}: Attempting to reconnect...")
                     continue # Loop back to try connecting again
                 break
 
     def on_disconnect(self, c, e):
-        print("Disconnected from", c.server, e.arguments[0])
+        logger.warning(f"{c.server}: Disconnected from server.")
         # Let the start() loop handle reconnection
 
     def disconnect(self, message="Goodbye, cruel world!"):
@@ -143,7 +143,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         c.nick(c.get_nickname() + "_")
 
     def on_welcome(self, c, e):
-        print(f"Connected to {self.name}")
+        logger.info(f"{c.server}: Connected to server.")
         if self.nickserv and self.nickserv_command:
             c.privmsg(self.nickserv, self.nickserv_command)
         for channel in self.prechannels:
@@ -151,7 +151,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                 c.join(channel["name"], channel["password"])
             else:
                 c.join(channel["name"])
-            print(f"Joined {channel['name']}")
+            logger.info(f"{c.server}: Joined {channel['name']}")
 
     def get_version(self):
         return "HexChat 2.16.2 [x64] / Microsoft Windows 10 Pro (x64) [AMD EPYC 9655P 96-Core Processor (4.50GHz)]"
@@ -171,7 +171,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                 r"[\x02\x0F\x16\x1D\x1F]|\x03(\d{,2}(,\d{,2})?)?", "", message
             )
             currenttime = datetime.datetime.now(datetime.timezone.utc)
-            print(f"{currenttime} - {c.server}/{e.target} - {e.source.nick}: {message}")
+            logger.info(f"{currenttime} - {c.server}/{e.target} - {e.source.nick}: {message}")
             for channel in self.prechannels:
                 if e.target.lower() == channel["name"].lower():
                     author = channel.get("author", None)
@@ -181,29 +181,29 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                             message,
                             re.IGNORECASE,
                         ):
-                            logger.error(f"{c.server}/{e.target} - {message}")
+                            logger.info(f"{currenttime} - {c.server}/{e.target} - {message}")
                         regexes = ("pre_regex", "nuke_regex", "info_regex")
                         parser = ircMessageParser(channel)
                         for current_regex in regexes:
                             if current_regex == "pre_regex":
-                                if args["predb"]:
+                                if self.args["predb"]:
                                     self.process_pre_regex(c, e, message, parser, currenttime)
-                                if args["arr"]:
-                                    self.add_to_arr(c, e, message, parser, channel)
+                                if self.args["arr"]:
+                                    self.add_to_arr(c, e, message, parser)
                                 break
-                            elif current_regex == "nuke_regex" and args["predb"]:
+                            elif current_regex == "nuke_regex" and self.args["predb"]:
                                 self.process_nuke_regex(c, e, message, parser, currenttime)
                                 break
-                            elif current_regex == "info_regex" and args["predb"]:
+                            elif current_regex == "info_regex" and self.args["predb"]:
                                 self.process_info_regex(c, e, message, parser, currenttime)
                                 break
         except Exception as exc:
             exc_info = (type(exc), exc, exc.__traceback__)
-            logger.error(message, exc_info=exc_info)
+            logger.error(logger.info(f"{c.server}/{e.target} - {message}"), exc_info=exc_info)
 
-    def add_to_arr(self, c, e, message, parser, channel):
+    def add_to_arr(self, c, e, message, parser):
         result = parser.preparse(message)
-        if not result:
+        if not result or all(value is None for value in result.values()):
             return
         release_name = result["release"]
         section = result["section"]
@@ -244,10 +244,9 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         if format not in irc_formats:
             return
 
-        print(data)
         group_name = data.get("group")
-        print(f"Adding {group_name} to *arr instances")
-        scene2arr.main({"add": True, "group": group_name, "remove": False, "scan": False, "verbose": False})
+        logger.info(f"Adding {group_name} to *arr instances.")
+        scene2arr.main({"add": True, "group": group_name, "remove": False, "xrel": False, "verbose": False})
     
     def process_pre_regex(self, c, e, message, parser, currenttime):
         result = parser.preparse(message)
@@ -276,7 +275,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                 )
             self.conn.commit()
         except sqlite3.Error as error:
-            print(f"{c.server}/{e.target} - {error} - {message}")
+            logger.error(f"{c.server}/{e.target} - {error} - {message}")
         finally:
             cursor.close()
             self.lock.release()
@@ -328,7 +327,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                     )
             self.conn.commit()
         except sqlite3.Error as error:
-            print(f"{c.server}/{e.target} - {error} - {message}")
+            logger.error(f"{c.server}/{e.target} - {error} - {message}")
         finally:
             cursor.close()
             self.lock.release()
@@ -393,7 +392,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                         )
             self.conn.commit()
         except sqlite3.Error as error:
-            print(f"{c.server}/{e.target} - {error} - {message}")
+            logger.error(f"{c.server}/{e.target} - {error} - {message}")
         finally:
             cursor.close()
             self.lock.release()
@@ -444,12 +443,23 @@ def create_db(dbname):
     db.conn.close()
 
 
-def main(args):
+def main(args=None):
+    if args is None:
+        args = start_argparse()
+
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG if args["verbose"] else logging.INFO)
+
+    # Add a StreamHandler to log to the console
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    logger.addHandler(console_handler)
+
     try:
         with open(IRC2ARR_CONFIG_FILE, "r") as ymlfile:
             cfg = yaml.safe_load(ymlfile)
     except Exception as e:
-        print("Error loading irc2arr.yml:", e)
+        logger.error(f"Error loading {IRC2ARR_CONFIG_FILE}:", e)
         sys.exit(1)
     if args["predb"]:
         create_db(IRC2ARR_DB_FILE)
@@ -490,16 +500,16 @@ def main(args):
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("Keyboard interrupt detected, exiting...")
+        logger.info("Keyboard interrupt detected, exiting...")
         for bot in bots:
             try:
                 bot.disconnect()
                 #pass
             except Exception as e:
-                print(f"Error stopping bot: {e}")
+                logger.error(f"Error stopping bot: {e}")
         for t in threads:
             t.join()
-        print("All threads stopped, exiting.")
+        logger.info("All threads stopped, exiting.")
 
 
 if __name__ == "__main__":
@@ -529,5 +539,5 @@ if __name__ == "__main__":
     c.execute("VACUUM")
     conn.close()
     '''
-    args = start_argparse()
-    main(args)
+    
+    main()
