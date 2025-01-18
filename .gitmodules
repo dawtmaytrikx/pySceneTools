@@ -1,0 +1,3 @@
+[submodule "scene-release-parser-php"]
+	path = scene-release-parser-php
+	url = https://github.com/pr0pz/scene-release-parser-php.git
