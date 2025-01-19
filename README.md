@@ -34,9 +34,9 @@ database. Check those databases to find the correct ID:
 sqlite3 sonarr.db "SELECT id, name FROM releaseprofiles;"
 ```
 
-If you plan on using the IRC functionality, you can configure your prechans in
-`irc.yaml`. It comes preconfigured with a couple of public channels for
-bootstrapping.
+If you plan on using the IRC functionality, you can rename `irc.yaml.example` to `irc.yaml` 
+and configure your prechans there. It comes preconfigured with a couple of public channels
+for bootstrapping.
 
 
 ### usage

@@ -26,20 +26,12 @@ xrel_categories = (
     "ENGLISH",       # contains English language TV and MOViE releases
 )
 
+# You'll finda list of available types, languages and formats in scene-release-parser-php/ReleasePatterns.php
 # acceptable release types for sonarr/radarr
 irc_types = (
-    #"ABook",
     "Anime",
-    #"App",
-    #"Bookware",
-    #"eBook",
-    #"Font",
-    #"Game",
-    #"Music",
-    #"MusicVideo",
     "TV",
     "Sports",
-    #"XXX",
     "Movie"
 )
 
