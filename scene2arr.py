@@ -428,7 +428,7 @@ def main(args=None):
         for server in cfg["servers"]:
             name = server["name"]
             host = server["host"]
-            nickname = server.get("nickname") or f"guest{random.randint(100, 999)}"
+            nickname = server.get("nickname") or f"humanperson{random.randint(100, 999)}"
             realname = server.get("realname", None)
             ssl_enabled = server.get("ssl_enabled", True)
             port = server.get("port", 6667)
