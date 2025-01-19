@@ -1,15 +1,11 @@
 from colorama import Fore
 
 #
-# ircarr.py
-#
-IRC2ARR_DB_FILE = "irc2arr.db"
-IRC2ARR_CONFIG_FILE = "irc2arr.yml"
-
-#
 # scene2arr.py
 #
 SCENE2ARR_DB_FILE = "scene2arr.db"
+PRE_DB_FILE = "pre.db"
+IRC_CONFIG_FILE = "irc.yaml"
 
 #
 # scenerename.py

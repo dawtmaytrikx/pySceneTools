@@ -1,40 +1,67 @@
 # pySceneTools
-
-## scene2arr.py
-This script lets you add new scene groups to a *arr release profiles as a required 
-tag, ensuring only releases from these groups are downloaded.
-
-### setup
-Initially `conf.py.example` needs to be renamed to `conf.py` and filled with the
-URLs to the *arr APIs and respective API keys. The `/1` at the end of the URLs
-in the example refer to the id of the release profile or restriction in the
-sonarr/radarr database. Check those databases to find the correct ID:
+Download the scripts via:
 ```
-sqlite3 sonarr.db "SELECT id, name FROM releaseprofiles;"
+git clone --recurse-submodules https://github.com/dawtmaytrikx/pySceneTools.git
 ```
 
-Additionally, install the required Python packages by running:
+Install the required Python packages by running:
 ```
 pip install -r requirements.txt
 ```
 
+If you need to update the repo do the following:
+```
+git pull --recurse-submodules
+git submodule update --recursive --remote
+```
+
+**⚠️ Please note that the database schema has recently changed.** In order to update
+it, you may need to run `python3 run_post_update.py`. Also note the comment about breaking
+changes below.
+
+
+## scene2arr.py
+This script lets you add new scene groups to a *arr release profiles as a required 
+tag, ensuring only releases from these groups are downloaded. As a secondary
+function, it can create a predb by listening in appropriate IRC channels.
+
+### setup
+Initially `conf.py.example` needs to be renamed to `conf.py` and filled with the
+URLs to the *arr APIs and respective API keys. The `/1` at the end of the URLs
+in the example refer to the id of the release profile in thesonarr/radarr 
+database. Check those databases to find the correct ID:
+```
+sqlite3 sonarr.db "SELECT id, name FROM releaseprofiles;"
+```
+
+If you plan on using the IRC functionality, you can configure your prechans in
+`irc.yaml`. It comes preconfigured with a couple of public channels for
+bootstrapping.
+
 
 ### usage
 ```
-usage: python3 scene2arr.py [-h] ([-s] [[ -a | -r ] GROUP ])
+usage: python3 scene2arr.py [-h] ([-i] [-p]) | ([-x] | [[-a | -r] GROUP])
 
 This script adds release groups to the *arr apps, or removes them.
 
 positional arguments:
   GROUP          Name of release group.
 
-optional arguments:
+options:
   -h, --help     show this help message and exit
+  -v, --verbose  Enable verbose mode.
+  -i, --irc      Listens for new releases in the IRC prechans, extracts the group name, and adds it to the *arr instances.
+  -p, --predb    Create a pre and nuke database by listening in IRC pre channels.
+  -x, --xrel     Check xREL for new releases and add them to the *arr instances.
   -a, --add      Add new group.
   -r, --remove   Remove group.
-  -x, --xrel     Check the xREL API for new groups.
-  -v, --verbose  Enable verbose mode.
 ```
+Running with `-i` will start an IRC bot that listens for new releases in prechans
+configured in `irc.yaml`. Whenever a release is pre'd that matches the filters 
+set in `conf.py`, the group name is extracted and added to the release profile
+as a required tag, ensuring releases from this group can be downloaded in the
+future. Enabling `-p` will create a pre (and nuke) database in `pre.db`.
 
 Using `-x` will check the xREL API for new scene groups and automatically add
 new groups as they appear. (**⚠️ Breaking Change: The `-x` option used to be
