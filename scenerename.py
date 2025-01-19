@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+from dotenv import load_dotenv
 import json
 import random
 import requests
@@ -678,6 +679,8 @@ def upsert_db(fileobj, status):
 
 
 if __name__ == "__main__":
+    load_dotenv()
+
     # this will catch keyboard interrupts
     signal.signal(signal.SIGINT, signal_handler)
 

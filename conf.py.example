@@ -1,27 +1,6 @@
 #
 # scene2arr.py
 #
-def configure_pvrs():
-    from classes import PVR
-    sonarr = PVR("sonarr")
-    sonarr4k = PVR("sonarr4k")
-    radarr = PVR("radarr")
-    radarr4k = PVR("radarr4k")
-
-    sonarr.url = "http://sonarr:9898/api/v3/releaseprofile/1"
-    sonarr.apikey = ""
-
-    sonarr4k.url = "http://sonarr4k:8989/api/v3/releaseprofile/1"
-    sonarr4k.apikey = ""
-
-    radarr.url = "http://radarr:8787/api/v3/releaseprofile/1"
-    radarr.apikey = ""
-
-    radarr4k.url = "https://radarr4k:7878/api/v3/releaseprofile/1"
-    radarr4k.apikey = ""
-
-    return sonarr, sonarr4k, radarr, radarr4k
-
 
 # see https://api.xrel.to/v2/release/categories.xml for a list of available categories
 xrel_categories = (

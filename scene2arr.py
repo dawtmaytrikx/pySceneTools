@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+from dotenv import load_dotenv
 import logging
 import random
 import requests
@@ -161,10 +162,28 @@ def create_pre_db(dbname):
 
     db.connection.commit()
 
+
 def init_pvrs(logger):
-    # get filters from PVR
-    sonarr, sonarr4k, radarr, radarr4k = configure_pvrs()
-    pvrs = [pvr for pvr in (sonarr, sonarr4k, radarr, radarr4k) if pvr.apikey]
+    from classes import PVR
+
+    sonarr = PVR("sonarr")
+    sonarr4k = PVR("sonarr4k")
+    radarr = PVR("radarr")
+    radarr4k = PVR("radarr4k")
+
+    sonarr.url = os.getenv("SONARR_URL", "")
+    sonarr.apikey = os.getenv("SONARR_APIKEY", "")
+
+    sonarr4k.url = os.getenv("SONARR4K_URL", "")
+    sonarr4k.apikey = os.getenv("SONARR4K_APIKEY", "")
+
+    radarr.url = os.getenv("RADARR_URL", "")
+    radarr.apikey = os.getenv("RADARR_APIKEY", "")
+
+    radarr4k.url = os.getenv("RADARR4K_URL", "")
+    radarr4k.apikey = os.getenv("RADARR4K_APIKEY", "")
+
+    pvrs = [pvr for pvr in (sonarr, sonarr4k, radarr, radarr4k) if pvr.apikey and pvr.url]
 
     for pvr in pvrs:
         notify_headers = {
@@ -389,6 +408,7 @@ def update_pvr(args, logger, db, pvr, newrestriction, release=None):
     return pvr
 
 def main(args=None):
+    load_dotenv()
     if args is None:
         args = start_argparse()
 

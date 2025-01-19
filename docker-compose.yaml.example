@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  pyscenetools:
+    build: .
+    container_name: predb
+    env_file: .env
+    volumes:
+      - .:/app
+    command: python3 scene2arr.py -p

@@ -26,17 +26,26 @@ tag, ensuring only releases from these groups are downloaded. As a secondary
 function, it can create a predb by listening in appropriate IRC channels.
 
 ### setup
-Initially `conf.py.example` needs to be renamed to `conf.py` and filled with the
-URLs to the *arr APIs and respective API keys. The `/1` at the end of the URLs
-in the example refer to the id of the release profile in thesonarr/radarr 
-database. Check those databases to find the correct ID:
+Initially `.env.example` needs to be renamed to `.env` and filled with the
+URLs to the *arr APIs and respective API keys. Leave the API key empty if you don't want to 
+use all of the PVRs. The `/1` at the end of the URLs in the example refer to the id of the 
+release profile in thesonarr/radarr database. Check those databases to find the correct ID:
 ```
 sqlite3 sonarr.db "SELECT id, name FROM releaseprofiles;"
 ```
+which should output something like
+```
+1|Scene
+2|P2P
+3|...
+```
+
+Rename `conf.py.example` to `conf.py` and configure the categories for the xREL
+API and/or different filters for use with the IRC bot.
 
 If you plan on using the IRC functionality, you can rename `irc.yaml.example` to `irc.yaml` 
-and configure your prechans there. It comes preconfigured with a couple of public channels
-for bootstrapping. The submodule [scene-release-parser-php](https://github.com/pr0pz/scene-release-parser-php) 
+and configure your prechans there. It comes preconfigured with a couple of public channels. 
+The submodule [scene-release-parser-php](https://github.com/pr0pz/scene-release-parser-php) 
 requires at least PHP 8.0.
 
 
