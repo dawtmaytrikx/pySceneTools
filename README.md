@@ -36,7 +36,8 @@ sqlite3 sonarr.db "SELECT id, name FROM releaseprofiles;"
 
 If you plan on using the IRC functionality, you can rename `irc.yaml.example` to `irc.yaml` 
 and configure your prechans there. It comes preconfigured with a couple of public channels
-for bootstrapping.
+for bootstrapping. The submodule [scene-release-parser-php](https://github.com/pr0pz/scene-release-parser-php) 
+requires at least PHP 8.0.
 
 
 ### usage
