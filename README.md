@@ -21,7 +21,7 @@ changes below.
 
 
 ## scene2arr.py
-This script lets you add new scene groups to a *arr release profiles as a required 
+This script lets you add new scene groups to *arr release profiles as a required 
 tag, ensuring only releases from these groups are downloaded. As a secondary
 function, it can create a predb by listening in appropriate IRC channels.
 
