@@ -50,42 +50,42 @@ servers:
         nuke_regex_nukenet: 4
         author: PREBot
         password:
-  - name: c-burns
-    host: irc.c-burns.co.uk
-    port: 9001
-    ssl_enabled: true
-    nickname:
-    realname: My Name
-    password:
-    nickserv: nickserv
-    nickserv_command: identify abc123
-    channels:
-      - name: '#pre'
-        pre_regex: '\( PRE \) \( ([\w-]*) \) ([\w._\(\)-]*)'
-        pre_regex_section: 1
-        pre_regex_release: 2
-        author: Trac3rs
-        password:
-      - name: '#pre-spam'
-        pre_regex: '\( PRE \) \( ([\w-]*) \) ([\w._\(\)-]*)'
-        pre_regex_section: 1
-        pre_regex_release: 2
-        author: Trac3rs
-        password:
-      - name: '#pre-info'
-        info_regex: '\[((?:GENRE)|(?:INFO))\]\s+([\w.\(\)-]+) (?:(?:\[Files:(\d+)\]\[Size:([\d.]+)MB\])|(?:\[Genre:([^\d][\w-]*)\]))'
-        info_regex_type: 1
-        info_regex_release: 2
-        info_regex_size: 4
-        info_regex_files: 3
-        info_regex_genre: 5
-        nuke_regex: '\[((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE)\] ([\w.\(\)-]*) \[Reason: ([\w.\(\)-]*)\] \[BY: ([\w]*)\]'
-        nuke_regex_type: 1
-        nuke_regex_release: 2
-        nuke_regex_reason: 3
-        nuke_regex_nukenet: 4
-        author: Trac3rs
-        password:
+  #- name: c-burns
+  #  host: irc.c-burns.co.uk
+  #  port: 9001
+  #  ssl_enabled: true
+  #  nickname:
+  #  realname: My Name
+  #  password:
+  #  nickserv: nickserv
+  #  nickserv_command: identify abc123
+  #  channels:
+  #    - name: '#pre'
+  #      pre_regex: '\( PRE \) \( ([\w-]*) \) ([\w._\(\)-]*)'
+  #      pre_regex_section: 1
+  #      pre_regex_release: 2
+  #      author: Trac3rs
+  #      password:
+  #    - name: '#pre-spam'
+  #      pre_regex: '\( PRE \) \( ([\w-]*) \) ([\w._\(\)-]*)'
+  #      pre_regex_section: 1
+  #      pre_regex_release: 2
+  #      author: Trac3rs
+  #      password:
+  #    - name: '#pre-info'
+  #      info_regex: '\[((?:GENRE)|(?:INFO))\]\s+([\w.\(\)-]+) (?:(?:\[Files:(\d+)\]\[Size:([\d.]+)MB\])|(?:\[Genre:([^\d][\w-]*)\]))'
+  #      info_regex_type: 1
+  #      info_regex_release: 2
+  #      info_regex_size: 4
+  #      info_regex_files: 3
+  #      info_regex_genre: 5
+  #      nuke_regex: '\[((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE)\] ([\w.\(\)-]*) \[Reason: ([\w.\(\)-]*)\] \[BY: ([\w]*)\]'
+  #      nuke_regex_type: 1
+  #      nuke_regex_release: 2
+  #      nuke_regex_reason: 3
+  #      nuke_regex_nukenet: 4
+  #      author: Trac3rs
+  #      password:
   - name: Corrupt
     host: irc.corrupt-net.org
     port: 6697
