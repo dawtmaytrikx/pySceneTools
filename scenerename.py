@@ -44,7 +44,7 @@ suffixes = [  # common additions from usenet
     "-Rakuv",
 ]
 skiptags = [  # hardcoded blacklist, add p2p groups
-    "dirfix",
+    "dirfix", # a dirfix release doesn't include the actual data
     "_S0",
     "_S1",
     "-d0rks",
@@ -141,7 +141,7 @@ def create_db(dbname):
             crcweb TEXT,
             status TEXT,
             tag TEXT,
-            date TEXT
+            timestamp INTEGER
         );"""
     )
 
@@ -153,7 +153,7 @@ def create_db(dbname):
             errnum TEXT,
             description TEXT,
             page TEXT,
-            date TEXT
+            timestamp INTEGER
         );"""
     )
 
@@ -161,8 +161,8 @@ def create_db(dbname):
         """CREATE TABLE IF NOT EXISTS lastrun
         (
             key INTEGER PRIMARY KEY AUTOINCREMENT,
-            start TEXT,
-            end TEXT,
+            start INTEGER,
+            end INTEGER,
             exitcode INTEGER,
             parameters TEXT
         );"""
@@ -185,7 +185,7 @@ def end_run(exitcode):
             print(f"{VERBOSE} Cleaning up DB ...")
         db.cursor.execute("VACUUM")
 
-    end = datetime.datetime.now(datetime.timezone.utc)
+    end = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
     db.cursor.execute(
         "UPDATE lastrun SET end=?, exitcode=? WHERE start=?", (end, exitcode, start)
     )
@@ -212,14 +212,14 @@ def error(errnum, description, fileobj):
     print(f"{ERROR} {errnum} - {description}\r\n\tfile: {fileobj.filename}")
     db.cursor.execute(
         """INSERT INTO errors 
-        (relname, errnum, description, page, date) 
+        (relname, errnum, description, page, timestamp) 
         VALUES (?, ?, ?, ?, ?)""",
         (
             fileobj.filepath,
             errnum,
             str(description),
             json.dumps(fileobj.page, indent=4),
-            datetime.datetime.now(datetime.timezone.utc),
+            int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
         ),
     )
 
@@ -656,7 +656,7 @@ def upsert_db(fileobj, status):
 
     db.cursor.execute(
         """INSERT OR REPLACE INTO srrdb 
-        (relname, origname, crccalc, crcweb, status, tag, date) 
+        (relname, origname, crccalc, crcweb, status, tag, timestamp) 
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (relname) DO UPDATE SET 
         origname=excluded.origname, 
@@ -664,7 +664,7 @@ def upsert_db(fileobj, status):
         crcweb=excluded.crcweb,
         status=excluded.status, 
         tag=excluded.tag, 
-        date=excluded.date""",
+        timestamp=excluded.timestamp""",
         (
             relname,
             origname,
@@ -672,7 +672,7 @@ def upsert_db(fileobj, status):
             fileobj.crcweb,
             status,
             args["tag"][0],
-            datetime.datetime.now(datetime.timezone.utc),
+            int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
         ),
     )
 
@@ -687,8 +687,8 @@ if __name__ == "__main__":
         print(args)
 
     # set up database
-    db = create_db("scenerename.db")
-    start = datetime.datetime.now(datetime.timezone.utc)
+    db = create_db(SCENERENAME_DB_FILE)
+    start = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
     db.cursor.execute(
         "INSERT INTO lastrun (start, parameters) VALUES (?, ?)", (start, str(args))
     )
@@ -696,7 +696,7 @@ if __name__ == "__main__":
 
     # clean error log
     db.cursor.execute(
-        "DELETE FROM errors WHERE date < ?", (start - datetime.timedelta(days=2),)
+        "DELETE FROM errors WHERE timestamp < ?", (start - datetime.timedelta(days=2),)
     )
     db.connection.commit()
 

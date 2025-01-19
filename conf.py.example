@@ -25,3 +25,31 @@ radarr4k.apikey = ""
 xrel_categories = (
     "ENGLISH",       # contains English language TV and MOViE releases
 )
+
+# You'll finda list of available types, languages and formats in scene-release-parser-php/ReleasePatterns.php
+# acceptable release types for sonarr/radarr
+irc_types = (
+    "Anime",
+    "TV",
+    "Sports",
+    "Movie"
+)
+
+# acceptable languages for sonarr/radarr
+irc_languages = [
+    {"de"},
+    {"de", "multi"},
+    {"en"},
+    set() # = No language in release name
+    # Add more valid combinations as needed
+]
+
+# acceptable formats for sonarr/radarr
+irc_formats = (
+    "AVC",
+    "x264",
+    "x265",
+    "h264",
+    "h265",
+    "HEVC"
+)
