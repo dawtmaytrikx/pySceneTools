@@ -12,9 +12,7 @@ RUN apt-get update && apt-get install -y \
 RUN echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/sury-php.list \
   && wget -qO - https://packages.sury.org/php/apt.gpg | apt-key add - \
   && apt-get update && apt-get install -y \
-    php8.0-cli \
-    php8.0-xml \
-    php8.0-mbstring
+    php8.0
 
 WORKDIR /app
 COPY requirements.txt /tmp/

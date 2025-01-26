@@ -217,8 +217,8 @@ class IRCBot(irc.bot.SingleServerIRCBot):
             output = subprocess.check_output(['php', 'parserelease.php', release_name, section], text=True).strip()
             data = json.loads(output)
         except subprocess.CalledProcessError as e:
-            self.logger.error(f"Error calling PHP script: {e}")
-            return
+            self.logger.critical(f"Error calling PHP script: {e}")
+            exit(1)
         except json.JSONDecodeError as e:
             self.logger.error(f"Error decoding JSON output: {e}")
             return

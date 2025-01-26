@@ -285,7 +285,7 @@ def xrel(args, logger, db, pvrs):
                         # don't process release, if group is already whitelisted
                         if newrestriction not in pvr.required:
                             pvr.required.append(newrestriction)
-                            pvr = update_pvr(args, db, pvr, newrestriction, release)
+                            pvr = update_pvr(args, logger, db, pvr, newrestriction, release)
                             logger.info(
                                 f"{ADDED} {newrestriction} to {pvr.name}! Release: {release['dirname']}"
                             )
@@ -337,7 +337,7 @@ def add_remove(args, logger, db, pvrs):
                 logger.debug(f"{VERBOSE} Adding {newrestriction} to {pvr.name}!")
                 if newrestriction not in pvr.required:
                     pvr.required.append(newrestriction)
-                    pvr = update_pvr(args, db, pvr, newrestriction)
+                    pvr = update_pvr(args, logger, db, pvr, newrestriction)
                     logger.info(f"{ADDED} {newrestriction} to {pvr.name}!")
                 else:
                     logger.info(f"{INFO} {newrestriction} is already in {pvr.name}!")
@@ -346,7 +346,7 @@ def add_remove(args, logger, db, pvrs):
                 logger.debug(f"{VERBOSE} Removing {newrestriction} from {pvr.name}")
                 if newrestriction in pvr.required:
                     pvr.required.remove(newrestriction)
-                    pvr = update_pvr(args, db, pvr, newrestriction)
+                    pvr = update_pvr(args, logger, db, pvr, newrestriction)
                     logger.info(f"{REMOVED} {newrestriction} from {pvr.name}!")
                 else:
                     logger.info(f"{INFO} {newrestriction} was not in {pvr.name}!")
