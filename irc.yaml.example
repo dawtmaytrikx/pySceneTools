@@ -128,20 +128,3 @@ servers:
         pre_regex_release: 2
         author: PreBot
         password: 
-  - name: P2P-NET
-    host: irc.p2p-irc.net
-    port: 7000
-    ssl_enabled: true
-    nickname: 
-    realname: My Name
-    password:
-    nickserv: nickserv
-    nickserv_command: identify 123abc
-    channels:
-      - name: '#echo.pre'
-        # <REM0TE>  MP3-WEB -> Serpenti_-_La_Tua_Medea-SINGLE-WEB-IT-2025-UOVA
-        pre_regex: '([\w-]*) -> ([\w.\(\)-]*)'
-        pre_regex_section: 1
-        pre_regex_release: 2
-        author: REM0TE
-        password:
