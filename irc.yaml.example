@@ -40,7 +40,7 @@ servers:
     nickserv_command: identify abc123
     channels:
       - name: '#pre'
-        pre_regex: '\[PRE\] \[([\w-]*)\] ([\w._\(\)-]*)'
+        pre_regex: '\[PRE\] \[([\w-]*)\] ([\w.\(\)-]*)'
         pre_regex_section: 1
         pre_regex_release: 2
         nuke_regex: '\[((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE)\] ([\w.\(\)-]*) \[([\w.\(\)-]*)\] ([\w]*)'
@@ -50,42 +50,6 @@ servers:
         nuke_regex_nukenet: 4
         author: PREBot
         password:
-  #- name: c-burns
-  #  host: irc.c-burns.co.uk
-  #  port: 9001
-  #  ssl_enabled: true
-  #  nickname:
-  #  realname: My Name
-  #  password:
-  #  nickserv: nickserv
-  #  nickserv_command: identify abc123
-  #  channels:
-  #    - name: '#pre'
-  #      pre_regex: '\( PRE \) \( ([\w-]*) \) ([\w._\(\)-]*)'
-  #      pre_regex_section: 1
-  #      pre_regex_release: 2
-  #      author: Trac3rs
-  #      password:
-  #    - name: '#pre-spam'
-  #      pre_regex: '\( PRE \) \( ([\w-]*) \) ([\w._\(\)-]*)'
-  #      pre_regex_section: 1
-  #      pre_regex_release: 2
-  #      author: Trac3rs
-  #      password:
-  #    - name: '#pre-info'
-  #      info_regex: '\[((?:GENRE)|(?:INFO))\]\s+([\w.\(\)-]+) (?:(?:\[Files:(\d+)\]\[Size:([\d.]+)MB\])|(?:\[Genre:([^\d][\w-]*)\]))'
-  #      info_regex_type: 1
-  #      info_regex_release: 2
-  #      info_regex_size: 4
-  #      info_regex_files: 3
-  #      info_regex_genre: 5
-  #      nuke_regex: '\[((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE)\] ([\w.\(\)-]*) \[Reason: ([\w.\(\)-]*)\] \[BY: ([\w]*)\]'
-  #      nuke_regex_type: 1
-  #      nuke_regex_release: 2
-  #      nuke_regex_reason: 3
-  #      nuke_regex_nukenet: 4
-  #      author: Trac3rs
-  #      password:
   - name: Corrupt
     host: irc.corrupt-net.org
     port: 6697
@@ -97,7 +61,7 @@ servers:
     nickserv_command: identify abc123
     channels:
       - name: '#pre'
-        pre_regex: 'PRE: \[([\w-]*)\] ([\w._\(\)-]*)'
+        pre_regex: 'PRE: \[([\w-]*)\] ([\w.\(\)-]*)'
         pre_regex_section: 1
         pre_regex_release: 2
         nuke_regex: '((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE): ([\w.\(\)-]*) \[([\w.\(\)-]*)\] \[([\w]*)\]'
@@ -123,4 +87,61 @@ servers:
         info_regex_files: 3
         info_regex_genre: 5
         author: PR3
+        password:
+  - name: predataba.se
+    host: irc.predataba.se
+    port: 6697
+    ssl_enabled: true
+    nickname: 
+    realname: My Name
+    password:
+    nickserv: nickserv
+    nickserv_command: identify 123abc
+    channels:
+      - name: '#pre'
+        # <pre> pre | GAMES » Coridden-FCKDRM
+        pre_regex: 'pre \| ([\w-]*) » ([\w.\(\)-]*)'
+        pre_regex_section: 1
+        pre_regex_release: 2
+        # <pre> nuke | Dom_and_Roland-Climax__Rebellion-WEB-2024-XTC (dupe.z0ne.2024-04-12) by SanctityDenied
+        nuke_regex: '((?:(?:(?:un)(?:del)?)|(?:re)|(?:s)|(?:old)|(?:mod))?nuke) \| ([\w.\(\)-]*) \(([\w.\(\)-]*)\) by ([\w]*)'
+        nuke_regex_type: 1
+        nuke_regex_release: 2
+        nuke_regex_reason: 3
+        nuke_regex_nukenet: 4
+        author: pre
+        password:
+  - name: Rizon
+    host: irc.rizon.net
+    port: 6697
+    ssl_enabled: true
+    nickname: 
+    realname: My Name
+    password:
+    nickserv: nickserv
+    nickserv_command: identify 123abc
+    channels:
+      - name: '#pre'
+        # <PreBot> [PRE]  [X264]  Rise.Of.The.Nazis.S02E03.DVDRip.x264-TABULARiA
+        pre_regex: '\[PRE\] \[([\w-]*)\] ([\w.\(\)-]*)'
+        pre_regex_section: 1
+        pre_regex_release: 2
+        author: PreBot
+        password: 
+  - name: P2P-NET
+    host: irc.p2p-irc.net
+    port: 7000
+    ssl_enabled: true
+    nickname: 
+    realname: My Name
+    password:
+    nickserv: nickserv
+    nickserv_command: identify 123abc
+    channels:
+      - name: '#echo.pre'
+        # <REM0TE>  MP3-WEB -> Serpenti_-_La_Tua_Medea-SINGLE-WEB-IT-2025-UOVA
+        pre_regex: '([\w-]*) -> ([\w.\(\)-]*)'
+        pre_regex_section: 1
+        pre_regex_release: 2
+        author: REM0TE
         password:
