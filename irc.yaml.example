@@ -110,7 +110,7 @@ servers:
     channels:
       - name: '#pre'
         # <pre> pre | GAMES | Coridden-FCKDRM
-        pre_regex: 'pre\s+\\|\s+([\w-]*)\s+\|\s+([\w._\(\)-]*)'
+        pre_regex: 'pre\s+\|\s+([\w-]*)\s+\|\s+([\w._\(\)-]*)'
         pre_regex_section: 1
         pre_regex_release: 2
         # <pre> nuke | Dom_and_Roland-Climax__Rebellion-WEB-2024-XTC (dupe.z0ne.2024-04-12) by SanctityDenied
