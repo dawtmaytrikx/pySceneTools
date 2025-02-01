@@ -124,7 +124,7 @@ servers:
       - name: '#pre.spam'
         # genre unknown
         # <pre> info | Chicago.P.D.2014.S04E05.POLISH.1080p.WEB.H264-A4O - 36 F & 3353 MB
-        info_regex: '((?:genre)|(?:info))\s+|\s+([\w.\(\)-]+)\s+-\s+(?:(?:(\d+)\s+F\s+&\s+([\d.]+)\s+MB)|(?:([^\d][\w-]*)))'
+        info_regex: '((?:genre)|(?:info))\s+\|\s+([\w.\(\)-]+)\s+-\s+(?:(?:(\d+)\s+F\s+&\s+([\d.]+)\s+MB)|(?:([^\d][\w-]*)))'
         info_regex_type: 1
         info_regex_release: 2
         info_regex_size: 4

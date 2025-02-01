@@ -105,7 +105,7 @@ def create_scene2arr_db(dbname):
         release TEXT,
         pvr TEXT,
         releasedate INTEGER,
-        timestamp TEXT
+        timestamp INTEGER
         );"""
     )
 
@@ -114,7 +114,7 @@ def create_scene2arr_db(dbname):
         category TEXT PRIMARY KEY,
         release TEXT,
         releasedate INTEGER,
-        timestamp TEXT
+        timestamp INTEGER
         );"""
     )
 
@@ -132,32 +132,28 @@ def create_pre_db(dbname):
     db = DB(dbname)
 
     db.cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS pre (
+        """CREATE TABLE IF NOT EXISTS pre (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             release TEXT,
             section TEXT,
-            size TEXT,
+            size INTEGER,
             files INTEGER,
             genre TEXT,
             source TEXT,
-            timestamp TEXT
-        )
-        """
+            timestamp INTEGER
+        )"""
     )
 
     db.cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS nuke (
+        """CREATE TABLE IF NOT EXISTS nuke (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             release TEXT,
             type TEXT,
             reason TEXT,
             nukenet TEXT,
             source TEXT,
-            timestamp TEXT
-        )
-        """
+            timestamp INTEGER
+        )"""
     )
 
     db.connection.commit()
