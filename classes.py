@@ -175,8 +175,9 @@ class IRCBot(irc.bot.SingleServerIRCBot):
             message = re.sub(
                 r"[\x02\x0F\x16\x1D\x1F]|\x03(\d{,2}(,\d{,2})?)?", "", message
             )
-            currenttime = datetime.datetime.now(datetime.timezone.utc).timestamp()
+            currenttime = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
             self.logger.info(f"{INFO} {c.server}/{e.target} - {e.source.nick}: {message}")
+            matched = False
             for channel in self.prechannels:
                 if e.target.lower() == channel["name"].lower():
                     author = channel.get("author", None)
@@ -192,16 +193,25 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                         for current_regex in regexes:
                             if current_regex == "pre_regex":
                                 if self.args["predb"]:
-                                    self.process_pre_regex(c, e, message, parser, currenttime)
+                                    if self.process_pre_regex(c, e, message, parser, currenttime):
+                                        matched = True
                                 if self.args["irc"]:
                                     self.add_to_arr(c, e, message, parser)
-                                break
+                                if matched:
+                                    break
                             elif current_regex == "nuke_regex" and self.args["predb"]:
-                                self.process_nuke_regex(c, e, message, parser, currenttime)
-                                break
+                                if self.process_nuke_regex(c, e, message, parser, currenttime):
+                                    matched = True
+                                if matched:
+                                    break
                             elif current_regex == "info_regex" and self.args["predb"]:
-                                self.process_info_regex(c, e, message, parser, currenttime)
-                                break
+                                if self.process_info_regex(c, e, message, parser, currenttime):
+                                    matched = True
+                                if matched:
+                                    break
+            if not matched:
+                with open("unmatched_messages.log", "a") as log_file:
+                    log_file.write(f"{datetime.datetime.now(datetime.timezone.utc)} - {c.server}/{e.target} - {e.source.nick}: {message}\n")
         except Exception as exc:
             exc_info = (type(exc), exc, exc.__traceback__)
             self.logger.error(f"{c.server}/{e.target} - {message}", exc_info=exc_info)
@@ -256,8 +266,9 @@ class IRCBot(irc.bot.SingleServerIRCBot):
     
     def process_pre_regex(self, c, e, message, parser, currenttime):
         result = parser.preparse(message)
-        if not result:
-            return
+        #print(result)
+        if not result or not result["release"] or not result["section"]:
+            return False
         try:
             self.lock.acquire()
             cursor = self.conn.cursor()
@@ -285,11 +296,13 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         finally:
             cursor.close()
             self.lock.release()
+            return True
 
     def process_nuke_regex(self, c, e, message, parser, currenttime):
         result = parser.nukeparse(message)
-        if not result:
-            return
+        #print(result)
+        if not result or not result["release"] or not result["type"] or not result["reason"]:
+            return False
         try:
             self.lock.acquire()
             cursor = self.conn.cursor()
@@ -337,11 +350,13 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         finally:
             cursor.close()
             self.lock.release()
+            return True
 
     def process_info_regex(self, c, e, message, parser, currenttime):
         result = parser.infoparse(message)
-        if not result:
-            return
+        #print(result)
+        if not result or not result["release"] or not result["type"]:
+            return False
         try:
             self.lock.acquire()
             cursor = self.conn.cursor()
@@ -402,6 +417,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         finally:
             cursor.close()
             self.lock.release()
+            return True
 
 
 #
