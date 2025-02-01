@@ -43,34 +43,34 @@ class ircMessageParser:
         # Retrieve the regex pattern from the channel configuration
         regex = self.channel.get(regex_key, None)
 
+        if regex is None:
+            return None
+
         result = {}
-        for capture_group in capture_groups:
-            try:
-                # Check if the capture group regex is defined if required
-                if not check_capture_group or self.channel[f"{regex_key}_{capture_group}"]:
-                    # Attempt to match the regex and extract the specified capture group
-                    result[capture_group] = (
-                        re.match(regex, message).group(self.channel[f"{regex_key}_{capture_group}"])
-                        if regex is not None
-                        else None
-                    )
-            except IndexError:
-                # If the capture group is not found, continue to the next one
-                continue
+        match = re.search(regex, message)
+        if match:
+            for capture_group in capture_groups:
+                try:
+                    # Check if the capture group regex is defined if required
+                    if not check_capture_group or self.channel.get(f"{regex_key}_{capture_group}", None):
+                        # Extract the specified capture group
+                        result[capture_group] = match.group(self.channel[f"{regex_key}_{capture_group}"])
+                except IndexError:
+                    # If the capture group is not found, continue to the next one
+                    result[capture_group] = None
+        else:
+            return None
 
         return result
 
     def preparse(self, message):
-        # Define capture groups for "pre" messages and call the generic parser
-        return self._parse_message(message, "pre_regex", ["release", "section"])
+        return self._parse_message(message, "pre_regex", ["section", "release"])
 
     def nukeparse(self, message):
-        # Define capture groups for "nuke" messages and call the generic parser
-        return self._parse_message(message, "nuke_regex", ["release", "type", "reason", "nukenet"])
+        return self._parse_message(message, "nuke_regex", ["type", "release", "reason", "nukenet"])
 
     def infoparse(self, message):
-        # Define capture groups for "info" messages and call the generic parser with additional check
-        return self._parse_message(message, "info_regex", ["release", "type", "genre", "size", "files"], check_capture_group=True)
+        return self._parse_message(message, "info_regex", ["type", "release", "files", "size", "genre"])
 
 class IRCBot(irc.bot.SingleServerIRCBot):
     def __init__(
@@ -306,7 +306,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         try:
             self.lock.acquire()
             cursor = self.conn.cursor()
-            cursor.execute(
+            cursor.execute( # TODO: Remove type from this select, because some prebots don't report it correctly? (e. g. predataba.se does not differentiate between nuke and modnuke)
                 """SELECT release, type, reason, nukenet FROM nuke 
                 WHERE release=? AND type=? AND reason=?""",
                 (
