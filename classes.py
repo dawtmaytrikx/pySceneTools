@@ -361,6 +361,10 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         #print(result)
         if not result or not result["release"] or not result["type"]:
             return False
+
+        # Convert type to uppercase
+        result["type"] = result["type"].upper()
+        
         try:
             self.lock.acquire()
             cursor = self.conn.cursor()
