@@ -134,7 +134,8 @@ def create_pre_db(dbname):
     db.cursor.execute(
         """CREATE TABLE IF NOT EXISTS pre (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            release TEXT,
+            release TEXT UNIQUE,
+            type TEXT,
             section TEXT,
             size INTEGER,
             files INTEGER,

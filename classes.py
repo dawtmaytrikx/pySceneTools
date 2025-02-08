@@ -71,6 +71,9 @@ class ircMessageParser:
 
     def infoparse(self, message):
         return self._parse_message(message, "info_regex", ["type", "release", "files", "size", "genre"])
+    
+    def addoldparse(self, message):
+        return self._parse_message(message, "addold_regex", ["type", "release", "section", "size", "files", "genre", "timestamp"])
 
 class IRCBot(irc.bot.SingleServerIRCBot):
     def __init__(
@@ -188,30 +191,31 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                             re.IGNORECASE,
                         ):
                             self.logger.info(f"{INFO} {c.server}/{e.target} - {message}")
-                        regexes = ("pre_regex", "nuke_regex", "info_regex")
+                        regexes = ("pre_regex", "nuke_regex", "info_regex", "addold_regex")
                         parser = ircMessageParser(channel)
                         for current_regex in regexes:
                             if current_regex == "pre_regex":
                                 if self.args["predb"]:
                                     if self.process_pre_regex(c, e, message, parser, currenttime):
                                         matched = True
+                                        break
                                 if self.args["irc"]:
                                     self.add_to_arr(c, e, message, parser)
-                                if matched:
+                            elif current_regex == "info_regex" and self.args["predb"]:
+                                if self.process_info_regex(c, e, message, parser, currenttime):
+                                    matched = True
                                     break
                             elif current_regex == "nuke_regex" and self.args["predb"]:
                                 if self.process_nuke_regex(c, e, message, parser, currenttime):
                                     matched = True
-                                if matched:
                                     break
-                            elif current_regex == "info_regex" and self.args["predb"]:
-                                if self.process_info_regex(c, e, message, parser, currenttime):
+                            elif current_regex == "addold_regex" and self.args["predb"]:
+                                if self.process_addold_regex(c, e, message, parser):
                                     matched = True
-                                if matched:
                                     break
-            if not matched:
-                with open("unmatched_messages.log", "a") as log_file:
-                    log_file.write(f"{datetime.datetime.now(datetime.timezone.utc)} - {c.server}/{e.target} - {e.source.nick}: {message}\n")
+                        if not matched:
+                            with open("unmatched_messages.log", "a") as log_file:
+                                log_file.write(f"{datetime.datetime.now(datetime.timezone.utc)} - {c.server}/{e.target} - {e.source.nick}: {message}\n")
         except Exception as exc:
             exc_info = (type(exc), exc, exc.__traceback__)
             self.logger.error(f"{c.server}/{e.target} - {message}", exc_info=exc_info)
@@ -280,11 +284,12 @@ class IRCBot(irc.bot.SingleServerIRCBot):
             if not row:
                 cursor.execute(
                     """
-                    INSERT INTO pre (release, section, source, timestamp)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO pre (release, type, section, source, timestamp)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
                     (
                         result["release"],
+                        "PRE",
                         result["section"],
                         f"{c.server}/{e.target}",
                         currenttime,
@@ -310,7 +315,52 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         try:
             self.lock.acquire()
             cursor = self.conn.cursor()
-            cursor.execute( # TODO: Remove type from this select, because some prebots don't report it correctly? (e. g. predataba.se does not differentiate between nuke and modnuke)
+
+            # predataba.se currently doesn't report modnukes correctly
+            # Check for identical modnuke in database if server is irc.predataba.se
+            if c.server == 'irc.predataba.se':
+                cursor.execute(
+                    """SELECT release FROM nuke 
+                    WHERE release=? AND type='MODNUKE' AND reason=? AND nukenet=?""",
+                    (
+                        result["release"],
+                        result["reason"],
+                        result["nukenet"],
+                    ),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return False
+
+            # if any other network reports a modnuke, check for identical nukes from predataba.se and update them
+            if result["type"] == 'MODNUKE':
+                cursor.execute(
+                    """SELECT release FROM nuke 
+                    WHERE release=? AND type='NUKE' AND reason=? AND nukenet=? AND source='irc.predataba.se/#pre'""",
+                    (
+                        result["release"],
+                        result["reason"],
+                        result["nukenet"],
+                    ),
+                )
+                row = cursor.fetchone()
+                if row:
+                    cursor.execute(
+                        """UPDATE nuke SET type=?, source=?, timestamp=? 
+                        WHERE release=? AND reason=? AND nukenet=?""",
+                        (
+                            result["type"],
+                            f"{c.server}/{e.target}",
+                            currenttime,
+                            result["release"],
+                            result["reason"],
+                            result["nukenet"],
+                        ),
+                    )
+                    self.conn.commit()
+                    return True
+
+            cursor.execute(
                 """SELECT release, type, reason, nukenet FROM nuke 
                 WHERE release=? AND type=? AND reason=?""",
                 (
@@ -354,7 +404,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         finally:
             cursor.close()
             self.lock.release()
-            return True
+        return True
 
     def process_info_regex(self, c, e, message, parser, currenttime):
         result = parser.infoparse(message)
@@ -372,12 +422,13 @@ class IRCBot(irc.bot.SingleServerIRCBot):
             row = cursor.fetchone()
             if not row:
                 if result["type"].lower() == "info":
-                    cursor.execute(
+                    cursor.execute( # TODO: Remove timestamp here, so that a later ADDOLD can add it?
                         """
-                        INSERT INTO pre (release, size, files, source, timestamp)
-                        VALUES (?, ?, ?, ?, ?)""",
+                        INSERT INTO pre (release, type, size, files, source, timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?)""",
                         (
                             result["release"],
+                            "INFO",
                             result["size"],
                             result["files"],
                             f"{c.server}/{e.target}",
@@ -387,10 +438,11 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                 if result["type"].lower() == "genre":
                     cursor.execute(
                         """
-                        INSERT INTO pre (release, genre, source, timestamp)
-                        VALUES (?, ?, ?, ?)""",
+                        INSERT INTO pre (release, type, genre, source, timestamp)
+                        VALUES (?, ?, ?, ?, ?)""",
                         (
                             result["release"],
+                            "GENRE",
                             result["genre"],
                             f"{c.server}/{e.target}",
                             currenttime,
@@ -424,6 +476,78 @@ class IRCBot(irc.bot.SingleServerIRCBot):
             self.lock.release()
             return True
 
+    def process_addold_regex(self, c, e, message, parser):
+        result = parser.addoldparse(message)
+        #print(result)
+        if not result or not result["release"] or not result["section"]:
+            return False
+        
+        result["size"] = round(float(result["size"])) if result["size"] else None
+
+        try:
+            self.lock.acquire()
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT release, type, section, size, files, genre, timestamp FROM pre WHERE release=?",
+                (result["release"],),
+            )
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute(
+                    """
+                    INSERT INTO pre (release, type, section, size, files, genre, source, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        result["release"],
+                        "ADDOLD",
+                        result["section"] if result["section"] and result["section"] != 'None' else None,
+                        result["size"] if result["size"] and result["size"] != '0' else None,
+                        result["files"] if result["files"] and result["files"] != '0' else None,
+                        result["genre"] if result["genre"] and result["genre"] != 'None' else None,
+                        f"{c.server}/{e.target}",
+                        result["timestamp"] if result["timestamp"] and result["timestamp"] != '0' else None,
+                    ),
+                )
+            else:
+                update_fields = []
+                update_values = []
+
+                if row["section"] == 'PRE' and result["section"] and result["section"] != 'PRE' and result["section"] != 'None':
+                    update_fields.append("section = ?")
+                    update_values.append(result["section"])
+
+                if not row["size"] and result["size"] and result["size"] != '0':
+                    update_fields.append("size = ?")
+                    update_values.append(result["size"])
+
+                if not row["files"] and result["files"] and result["files"] != '0':
+                    update_fields.append("files = ?")
+                    update_values.append(result["files"])
+
+                if not row["genre"] and result["genre"] and result["genre"] != 'None':
+                    update_fields.append("genre = ?")
+                    update_values.append(result["genre"])
+                
+                if row["type"] != 'PRE' and not row["timestamp"] and result["timestamp"] and result["timestamp"] != '0':
+                    update_fields.append("timestamp = ?")
+                    update_values.append(result["timestamp"])
+                
+                if row["type"] != 'PRE':
+                    update_fields.append("type = ?")
+                    update_values.append("ADDOLD")
+
+                if update_fields:
+                    update_query = f"UPDATE pre SET {', '.join(update_fields)} WHERE release = ?"
+                    update_values.append(result["release"])
+                    cursor.execute(update_query, update_values)
+
+            self.conn.commit()
+        except sqlite3.Error as error:
+            self.logger.error(f"{c.server}/{e.target} - {error} - {message}")
+        finally:
+            cursor.close()
+            self.lock.release()
+            return True
 
 #
 # scene2arr.py, scenerename.py

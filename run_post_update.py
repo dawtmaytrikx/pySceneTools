@@ -17,7 +17,7 @@ def set_db_version(db_path, version):
     conn.commit()
     conn.close()
 
-def convert_scene2arr_db(dbname):
+def convert_scene2arr_db_v2(dbname):
     conn = sqlite3.connect(dbname)
     cursor = conn.cursor()
 
@@ -76,7 +76,7 @@ def convert_scene2arr_db(dbname):
     conn.close()
     set_db_version(dbname, 2)  # Set the new version after conversion
 
-def convert_pre_db(dbname):
+def convert_pre_db_v2(dbname):
     conn = sqlite3.connect(dbname)
     cursor = conn.cursor()
 
@@ -141,7 +141,7 @@ def convert_pre_db(dbname):
     conn.close()
     set_db_version(dbname, 2)  # Set the new version after conversion
 
-def convert_scenerename_db(dbname):
+def convert_scenerename_db_v2(dbname):
     conn = sqlite3.connect(dbname)
     cursor = conn.cursor()
 
@@ -226,16 +226,71 @@ def convert_scenerename_db(dbname):
     conn.close()
     set_db_version(dbname, 2)  # Set the new version after conversion
 
+def convert_pre_db_v3(dbname):
+    conn = sqlite3.connect(dbname)
+    cursor = conn.cursor()
+
+    # Create new table with the desired schema
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pre_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            release TEXT UNIQUE,
+            type TEXT,
+            section TEXT,
+            size INTEGER,
+            files INTEGER,
+            genre TEXT,
+            source TEXT,
+            timestamp INTEGER
+        )
+    """)
+
+    # Copy data from old table to new table
+    cursor.execute("""
+        INSERT OR IGNORE INTO pre_new (id, release, type, section, size, files, genre, source, timestamp)
+        SELECT id, release, 'PRE', section, size, files, genre, source, timestamp
+        FROM pre
+    """)
+
+    # Drop old table
+    cursor.execute("DROP TABLE pre")
+
+    # Rename new table to original name
+    cursor.execute("ALTER TABLE pre_new RENAME TO pre")
+
+    # Remove bogus nukes from predataba.se if an equivalent modnuke from another source is present
+    cursor.execute("""
+        DELETE FROM nuke
+        WHERE source = 'irc.predataba.se/#pre'
+        AND EXISTS (
+            SELECT 1 FROM nuke AS modnuke
+            WHERE modnuke.release = nuke.release
+            AND modnuke.reason = nuke.reason
+            AND modnuke.nukenet = nuke.nukenet
+            AND modnuke.type = 'MODNUKE'
+            AND modnuke.source != 'irc.predataba.se/#pre'
+        )
+    """)
+
+    conn.commit()
+    cursor.execute("VACUUM")
+    conn.close()
+    set_db_version(dbname, 3)  # Set the new version after conversion
+
 # Convert databases if they exist and haven't been converted yet
 if os.path.exists('./scene2arr.db') and get_db_version('./scene2arr.db') < 2:
-    convert_scene2arr_db('./scene2arr.db')
+    convert_scene2arr_db_v2('./scene2arr.db')
 
 if os.path.exists('./test/irc2arr.db') and get_db_version('./test/irc2arr.db') < 2:
-    convert_pre_db('./test/irc2arr.db')
+    convert_pre_db_v2('./test/irc2arr.db')
 
 if os.path.exists('./scenerename.db') and get_db_version('./scenerename.db') < 2:
-    convert_scenerename_db('./scenerename.db')
+    convert_scenerename_db_v2('./scenerename.db')
 
 # Rename the irc2arr.db to pre.db if it exists and hasn't been renamed yet
 if os.path.exists('./test/irc2arr.db'):
     os.rename('./test/irc2arr.db', './pre.db')
+
+# Convert pre.db to version 3 if it exists and hasn't been converted yet
+if os.path.exists('./pre.db') and get_db_version('./pre.db') < 3:
+    convert_pre_db_v3('./pre.db')
