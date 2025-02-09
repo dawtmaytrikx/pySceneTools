@@ -1,4 +1,4 @@
-servers:
+input_servers:
   - name: ZEnet
     host: irc.zenet.org
     port: 6697
@@ -202,7 +202,7 @@ servers:
         nuke_examples:
           - '<|-NGPRE-|> .:::[NUKE]::: Queer.Planet.2024.1080p.WEB.H264-RVKD ::: [dupe.CBFM.2023-12-03] ::: [LocalNet] :::.'
           # no modnuke example
-          # no unnuke example
+          - '<|-NGPRE-|> .:::[UNNUKE]:::  Bioweapon_-_Let_The_Beat_(Edit)-SINGE-WEB-2025-UTNG::: [get.dirfix] ::: [ZoNeNET] :::.'
           - '<|-NGPRE-|> .:::[DELPRE]::: mkv_sample_info_-_AVC_-_1280_x_720_px_-_25.000_FPS_-_GermanEnglish_audio_-_1_min_0_s ::: spam  ::: ZoNeNET :::.'
         nuke_regex: '\.:::\s*\[((?:(?:RE)|(?:S)|(?:OLD)?(?:(?:UN)|(?:MOD))?)?(?:NUKE)|(?:UN)?DELPRE)\]\s*:::\s*([\w.\(\)-]+)\s*:::\s*\[?([\w.\(\)-]*)\]?\s*:::\s*\[?([\w.\(\)-]*)\]?\s*:::\.'
         nuke_regex_type: 1
@@ -233,3 +233,21 @@ servers:
         addold_regex_genre: 7
         author: '|-NGPRE-|'
         password:
+
+#output_servers:
+#  - name: "output_server_1"
+#    host: "irc.outputserver1.com"
+#    port: 6667
+#    ssl_enabled: true
+#    nickname: "outputbot1"
+#    realname: "Output Bot 1"
+#    channels:
+#      - name: "#json-pre"
+#        type: pre
+#      - name: "#json-info"
+#        type: info
+#      - name: "#json-nuke"
+#        type: nuke
+#    nickserv: "NickServ"
+#    nickserv_command: "IDENTIFY password"
+#    password: "outputpassword1"

@@ -3,25 +3,31 @@ import re
 import sqlite3
 import datetime
 import json
+import random
 import ssl
 import subprocess
 import threading
 import time
+import requests
 
 import irc.bot
 import irc.connection
 import irc.client
+from jaraco.stream import buffer  # Import the buffer module
 
 from conf import *
 from constants import *
 import scene2arr
+
+# Set the buffer class to LenientDecodingLineBuffer
+irc.client.ServerConnection.buffer_class = buffer.LenientDecodingLineBuffer
+
 
 #
 # scene2arr.py
 #
 class IgnoreError(Exception):
     pass
-
 
 class PVR(object):
     def __init__(self, name):
@@ -89,6 +95,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         channels,
         nickserv,
         nickserv_command,
+        version,  # Add version parameter
         password=None,
     ):
         self.args = args
@@ -99,10 +106,11 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         self.ssl_enabled = ssl_enabled
         self.nickname = nickname
         self.realname = realname
-        self.prechannels = channels
+        self.ircchannels = channels
         self.password = password
         self.nickserv = nickserv
         self.nickserv_command = nickserv_command
+        self.version = version  # Store version as an instance variable
 
         if self.ssl_enabled:
             factory = irc.connection.Factory(wrapper=ssl.wrap_socket)
@@ -115,16 +123,6 @@ class IRCBot(irc.bot.SingleServerIRCBot):
 
         self.intentional_disconnect = False
         self.connection.set_keepalive(30)
-        
-        if args["predb"]:
-            with sqlite3.connect(PRE_DB_FILE, check_same_thread=False) as conn:
-                self.conn = conn
-
-        # we want a shared lock for all threads, so it is actually created outside of this class
-        try:
-            self.lock
-        except NameError:
-            self.lock = threading.Lock()
 
     def start(self):
         while not self.intentional_disconnect:
@@ -143,18 +141,49 @@ class IRCBot(irc.bot.SingleServerIRCBot):
 
     def disconnect(self, message="Goodbye, cruel world!"):
         self.intentional_disconnect = True
-        if self.args["predb"]:
-            self.conn.close()
         super().disconnect(message)
 
     def on_nicknameinuse(self, c, e):
         c.nick(c.get_nickname() + "_")
+    
+    away_messages = [
+        "Away: Currently engaged in an epic battle with my refrigerator door. (Spoiler: It wins.)",
+        "AFK: Investigating a suspicious noise in the kitchen. If I don't return, avenge me.",
+        "BRB: Testing if my toaster is secretly an AI. Results pending.",
+        "Gone: Either abducted by aliens or fell asleep at my keyboard. 50/50 chance.",
+        "AFK: Seeking wisdom from the coffee oracle. Will return enlightened (or jittery).",
+        "BRB: Trying to teach my cat how to IRC. Progress: [█████░░░░░] 50%",
+        "Away: Pretending to be productive while actually watching cat videos.",
+        "AFK: In a meeting with my couch. Topic: Naps & Snacks.",
+        "Gone Fishing: By 'fishing,' I mean staring at the fridge hoping food appears.",
+        "AFK: My computer chair has rejected me. Engaging in negotiations.",
+        "Away: Experiencing an existential crisis about semicolons. Send help.",
+        "AFK: Attempting to break the world record for longest bathroom break.",
+        "Gone: I've been away so long, my plants learned to type. Please send water.",
+        "BRB: Running at 1% battery. Seeking nearest charging station (aka my bed).",
+        "AFK: Rebooting... please wait... (Or just pretend I'm still here.)",
+        "AFK: Switching to my backup brain cell. May experience lag.",
+        "Gone: Do not disturb—I'm in the middle of a staring contest with my screen saver.",
+        "AFK: Currently buffering. Please stand by...",
+        "Away: Not here. But if you leave a message, I'll totally pretend I saw it later.",
+        "AFK: Doing something important. Or maybe not. You'll never know.",
+        "Gone: Out sourcing RAM. Not for my PC—just for my memory.",
+        "BRB: Off on a top-secret mission. (Okay, fine, I just went to get snacks.)",
+        "AFK: Experimenting with time travel. If this message is still here, it failed.",
+        "Away: Re-enacting the 'Are you still watching?' scene from Netflix.",
+        "BRB: Stuck in a captcha. Send reinforcements."
+    ]
+
+    def set_away(self, message=random.choice(away_messages)):
+        if message:
+            self.connection.send_raw(f"AWAY :{message}")
 
     def on_welcome(self, c, e):
         self.logger.info(f"{c.server}: Connected to server.")
+        self.set_away()
         if self.nickserv and self.nickserv_command:
             c.privmsg(self.nickserv, self.nickserv_command)
-        for channel in self.prechannels:
+        for channel in self.ircchannels:
             if "password" in channel:
                 c.join(channel["name"], channel["password"])
             else:
@@ -162,8 +191,46 @@ class IRCBot(irc.bot.SingleServerIRCBot):
             self.logger.info(f"{c.server}: Joined {channel['name']}")
 
     def get_version(self):
-        return "HexChat 2.16.2 [x64] / Microsoft Windows 10 Pro (x64) [AMD EPYC 9655P 96-Core Processor (4.50GHz)]"
+        return self.version  # Return the instance-specific version string
 
+class InputBot(IRCBot):
+    def __init__(
+        self,
+        args,
+        logger,
+        name,
+        server,
+        port,
+        ssl_enabled,
+        nickname,
+        realname,
+        ircchannels,
+        nickserv,
+        nickserv_command,
+        output_bots,
+        version,
+        password=None,
+    ):
+        super().__init__(args, logger, name, server, port, ssl_enabled, nickname, realname, ircchannels, nickserv, nickserv_command, version, password)
+        self.args = args
+        self.logger = logger
+        self.output_bots = output_bots
+
+        if args["predb"]:
+            with sqlite3.connect(PRE_DB_FILE, check_same_thread=False) as conn:
+                self.conn = conn
+
+        # we want a shared lock for all threads, so it is actually created outside of this class
+        try:
+            self.lock
+        except NameError:
+            self.lock = threading.Lock()
+
+    def disconnect(self, message="Goodbye, cruel world!"):
+        if self.args["predb"]:
+            self.conn.close()
+        super().disconnect(message)
+    
     def on_privmsg(self, c, e):
         self.handle_message(c, e)
 
@@ -181,7 +248,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
             currenttime = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
             self.logger.info(f"{INFO} {c.server}/{e.target} - {e.source.nick}: {message}")
             matched = False
-            for channel in self.prechannels:
+            for channel in self.ircchannels:
                 if e.target.lower() == channel["name"].lower():
                     author = channel.get("author", None)
                     if author is None or author == e.source.nick:
@@ -231,10 +298,10 @@ class IRCBot(irc.bot.SingleServerIRCBot):
             output = subprocess.check_output(['php', 'parserelease.php', release_name, section], text=True).strip()
             data = json.loads(output)
         except subprocess.CalledProcessError as e:
-            self.logger.critical(f"Error calling PHP script: {e}")
+            self.logger.critical(f"Error calling PHP script: {e}", exc_info=True)
             exit(1)
         except json.JSONDecodeError as e:
-            self.logger.error(f"Error decoding JSON output: {e}")
+            self.logger.error(f"Error decoding JSON output: {e}", exc_info=True)
             return
         
         # Discard irrelevant releases
@@ -295,9 +362,10 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                         currenttime,
                     ),
                 )
-            self.conn.commit()
+                self.conn.commit()
+                self.broadcast("pre", result)  # Notify the Broadcaster
         except sqlite3.Error as error:
-            self.logger.error(f"{c.server}/{e.target} - {error} - {message}")
+            self.logger.error(f"{c.server}/{e.target} - {error} - {message}", exc_info=True)
         finally:
             cursor.close()
             self.lock.release()
@@ -358,6 +426,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                         ),
                     )
                     self.conn.commit()
+                    self.broadcast("nuke", result)  # Notify the Broadcaster
                     return True
 
             cursor.execute(
@@ -385,6 +454,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                         currenttime,
                     ),
                 )
+                self.broadcast("nuke", result)  # Notify the Broadcaster
             else:
                 if not row[3]:
                     cursor.execute(
@@ -400,7 +470,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                     )
             self.conn.commit()
         except sqlite3.Error as error:
-            self.logger.error(f"{c.server}/{e.target} - {error} - {message}")
+            self.logger.error(f"{c.server}/{e.target} - {error} - {message}", exc_info=True)
         finally:
             cursor.close()
             self.lock.release()
@@ -412,6 +482,9 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         if not result or not result["release"] or not result["type"]:
             return False
         
+        result["size"] = round(float(result["size"])) if result["size"] else None
+        result["files"] = int(result["files"]) if result["files"] else None
+
         try:
             self.lock.acquire()
             cursor = self.conn.cursor()
@@ -435,6 +508,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                             currenttime,
                         ),
                     )
+                    self.broadcast("info", result)  # Notify the Broadcaster
                 if result["type"].lower() == "genre":
                     cursor.execute(
                         """
@@ -448,6 +522,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                             currenttime,
                         ),
                     )
+                    #self.broadcast("info", result)  # Notify the Broadcaster
             else:
                 if not row[3] or len(row[3]) == 1:
                     if result["type"].lower() == "genre":
@@ -458,6 +533,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                                 result["release"],
                             ),
                         )
+                        #self.broadcast("info", result)  # Notify the Broadcaster
                 if not row[1] and not row[2]:
                     if result["type"].lower() == "info":
                         cursor.execute(
@@ -468,9 +544,10 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                                 result["release"],
                             ),
                         )
+                        self.broadcast("info", result)  # Notify the Broadcaster
             self.conn.commit()
         except sqlite3.Error as error:
-            self.logger.error(f"{c.server}/{e.target} - {error} - {message}")
+            self.logger.error(f"{c.server}/{e.target} - {error} - {message}", exc_info=True)
         finally:
             cursor.close()
             self.lock.release()
@@ -543,11 +620,297 @@ class IRCBot(irc.bot.SingleServerIRCBot):
 
             self.conn.commit()
         except sqlite3.Error as error:
-            self.logger.error(f"{c.server}/{e.target} - {error} - {message}")
+            self.logger.error(f"{c.server}/{e.target} - {error} - {message}", exc_info=True)
         finally:
             cursor.close()
             self.lock.release()
             return True
+        
+    def broadcast(self, message_type, data):
+        for bot in self.output_bots:
+            bot.broadcast(message_type, data)
+
+class OutputBot(IRCBot):
+    def __init__(
+        self,
+        args,
+        logger,
+        name,
+        host,
+        port,
+        ssl_enabled,
+        nickname,
+        realname,
+        ircchannels,
+        nickserv,
+        nickserv_command,
+        version,
+        password=None,
+    ):
+        super().__init__(args, logger, name, host, port, ssl_enabled, nickname, realname, ircchannels, nickserv, nickserv_command, version, password)
+        self.pre_channels = [channel["name"] for channel in ircchannels if channel["type"] == "pre"]
+        self.nuke_channels = [channel["name"] for channel in ircchannels if channel["type"] == "nuke"]
+        self.info_channels = [channel["name"] for channel in ircchannels if channel["type"] == "info"]
+        self.logger.info(f"OutputBot {name} initialized with channels: {ircchannels}")
+
+        self.musicbrainz_client = MusicBrainzClient()
+        self.omdb_client = OMDBClient(os.getenv("OMDB_APIKEY", ""))
+
+
+    def start(self):
+        self.logger.info(f"OutputBot {self.name} starting...")
+        super().start()
+        self.logger.info(f"OutputBot {self.name} connected.")
+
+    def determine_section(self, data):
+        if data["type"] == "ABook":
+            return "AUDiOBOOKS"
+        elif data["type"] == "Anime":
+            return "ANiME"
+        elif data["type"] == "App":
+            if data["os"] == "Windows":
+                return "APPS"
+            elif data["os"] == "Linux":
+                return "LiNUX"
+            elif data["os"] == "macOS":
+                return "MACOS"
+            else:
+                return "APPS"
+        elif data["type"] == "Bookware":
+            return "BOOKWARE"
+        elif data["type"] == "eBook":
+            return "EBOOKS"
+        elif data["type"] == "Font":
+            return "FONTS"
+        elif data["type"] == "Game":
+            if data["device"] == "Nintendo Switch":
+                return "NSW"
+            elif data["device"] == "Playstation 5":
+                return "PS5"
+            elif data["device"] == "Playstation 4":
+                return "PS4"
+            elif data["device"] == "Microsoft Xbox One":
+                return "XBOXONE"
+            elif data["device"] == "Microsoft Xbox360":
+                return "XBOX360"
+            else:
+                return "GAMES"
+        elif data["type"] == "Music":
+            if data["format"] == "FLAC":
+                return "FLAC"
+            else:
+                return "MP3"
+        elif data["type"] == "MusicVideo":
+            return "MViD"
+        elif data["type"] == "TV":
+            if data["format"] == "x264" or data["format"] == "h264":
+                return "TV-X264"
+            elif data["format"] == "x265" or data["format"] == "h265":
+                return "TV-X265"
+            else:
+                return "TV"
+        elif data["type"] == "Sports":
+            return "SPORTS"
+        elif data["type"] == "XXX":
+            return "XXX"
+        elif data["type"] == "Movie":
+            if data["format"] == "DVDR":
+                return "DVDR"
+            elif data.get("flags") and "Complete" in data["flags"]:
+                return "BLURAY"
+            elif data["format"] == "x264" or data["format"] == "h264":
+                return "X264"
+            elif data["format"] == "x265" or data["format"] == "h265":
+                return "X265"
+            #else:
+        #else:
+        return "PRE"
+
+    def broadcast(self, message_type, data):
+        channels = []
+        broadcast_genre = False
+        if message_type == "pre":
+            channels = self.pre_channels
+            # Call the PHP script to get the type of release
+            try:
+                output = subprocess.check_output(['php', 'parserelease.php', data["release"], data["section"]], text=True).strip()
+                jsondata = json.loads(output)
+                #print(jsondata)
+                data["section"] = self.determine_section(jsondata)
+                if jsondata["type"] in ["Music", "TV", "Movie"]:
+                    broadcast_genre = True
+                    print(jsondata)
+            except subprocess.CalledProcessError as e:
+                self.logger.critical(f"Error calling PHP script: {e}", exc_info=True)
+                exit(1)
+            except json.JSONDecodeError as e:
+                self.logger.error(f"Error decoding JSON output: {e}", exc_info=True)
+                return
+            except Exception as e:
+                self.logger.error(f"{ERROR}: {Exception} - {e}", exc_info=True)
+                return  
+        elif message_type == "nuke":
+            channels = self.nuke_channels
+        elif message_type == "info":
+            channels = self.info_channels
+
+        # Create a new dictionary without None values
+        filtered_data = {}
+        for key, value in data.items():
+            if value is not None:
+                filtered_data[key] = value
+
+        message = json.dumps(filtered_data)
+        for channel in channels:
+            self.connection.privmsg(channel, message)
+            self.logger.info(f"OutputBot {self.name} sent message to {channel}: {message}")
+        
+        if broadcast_genre and jsondata["type"] == "Music":
+            artist = jsondata.get("artist")
+            title = jsondata.get("title")
+            title_extra = jsondata.get("title_extra")
+            try:
+                if artist:
+                    genres = self.musicbrainz_client.get_genres(artist, title)
+                # [PRE] [FLAC] VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD 
+                # {'release': 'VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD', 'title': 'Various', 'title_extra': 'Hip Hop Classics Volume Three', 'group': 'THEVOiD', 'year': 1997, 'date': None, 'season': None, 'episode': None, 'disc': None, 'flags': None, 'source': 'CD', 'format': 'FLAC', 'resolution': None, 'audio': None, 'device': None, 'os': None, 'version': None, 'language': None, 'country': None, 'type': 'Music'}
+                else: 
+                    genres = self.musicbrainz_client.get_genres(title, title_extra)
+                if genres:
+                    genres = [genre.lower().replace(' & ', '&').replace(' and ', '&').replace(' ', '.') for genre in genres]
+                    genre_string = '/'.join(genres)
+                    genre_message = {
+                        "type": "GENRE",
+                        "release": data["release"],
+                        "genre": genre_string                            
+                    }
+            except requests.exceptions.HTTPError as e:
+                self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
+            except requests.exceptions.ConnectionError as e:
+                self.logger.error(f"Connection error occurred: {e}", exc_info=True)
+            except Exception as e:
+                self.logger.error(f"{ERROR}: {Exception} - {e}", exc_info=True)
+            self.broadcast("info", genre_message)
+        elif broadcast_genre and jsondata["type"] in ["TV", "Movie"]:
+            title = jsondata.get("title")
+            title_extra = jsondata.get("title_extra")
+            country = jsondata.get("country")
+            year = jsondata.get("year")
+            try:
+                genres = self.omdb_client.get_genre(title, title_extra, country, year)
+                if genres:
+                    genre_message = {
+                        "type": "GENRE",
+                        "release": data["release"],
+                        "genre": genres
+                    }
+                    self.broadcast("info", genre_message)
+            except requests.exceptions.HTTPError as e:
+                self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
+            except requests.exceptions.ConnectionError as e:
+                self.logger.error(f"Connection error occurred: {e}", exc_info=True)
+            except Exception as e:
+                self.logger.error(f"{ERROR}: {Exception} - {e}", exc_info=True)
+
+class MusicBrainzClient:
+    # Example usage:
+    # client = MusicBrainzClient()
+    # genres = client.get_genres("Nirvana", "Nevermind")
+    # print(genres)
+    def __init__(self):
+        self.base_url = "https://musicbrainz.org/ws/2/"
+        self.headers = {
+            "User-Agent": "pySceneTools/dev (dotmatrix @t riseup.net)"
+        }
+
+    def search_artist(self, artist_name):
+        url = f"{self.base_url}artist/"
+        params = {
+            "query": artist_name,
+            "fmt": "json"
+        }
+        response = requests.get(url, headers=self.headers, params=params)
+        response.raise_for_status()
+        return response.json()
+
+    def search_album(self, artist_id, album_title):
+        url = f"{self.base_url}release-group/"
+        params = {
+            "artist": artist_id,
+            "releasegroup": album_title,
+            "fmt": "json"
+        }
+        response = requests.get(url, headers=self.headers, params=params)
+        response.raise_for_status()
+        return response.json()
+
+    def get_genres(self, artist_name, album_title):
+        artist_data = self.search_artist(artist_name)
+        if not artist_data['artists']:
+            return None
+        artist_id = artist_data['artists'][0]['id']
+
+        album_data = self.search_album(artist_id, album_title)
+        if not album_data['release-groups']:
+            return None
+        album_id = album_data['release-groups'][0]['id']
+
+        url = f"{self.base_url}release-group/{album_id}"
+        params = {
+            "inc": "genres",
+            "fmt": "json"
+        }
+        response = requests.get(url, headers=self.headers, params=params)
+        response.raise_for_status()
+        album_info = response.json()
+        print(album_info)
+        return [genre['name'] for genre in album_info.get('genres', [])]
+
+class OMDBClient:
+    def __init__(self, api_key):
+        self.base_url = "http://www.omdbapi.com/"
+        self.api_key = api_key
+        self.cache = []
+
+    def search_title(self, title, year=None):
+        params = {
+            "t": title,
+            "apikey": self.api_key
+        }
+        if year:
+            params["y"] = year
+        response = requests.get(self.base_url, params=params)
+        response.raise_for_status()
+        print(response.json())
+        return response.json()
+
+    def get_genre(self, title, title_extra, country, year=None):
+        search_titles = [title]
+        if title_extra:
+            search_titles.append(title_extra)
+        if country:
+            search_titles.append(f"{title} {country}")
+        for search_title in search_titles:
+            # Check cache first
+            for cached_query in self.cache:
+                if cached_query['title'] == search_title and cached_query['year'] == year:
+                    return cached_query['result']
+            result = self.search_title(search_title, year)
+            if result.get("Title") == title:
+                genre = result.get("Genre")
+                if genre:
+                    genre = genre.lower().replace(", ", "/").replace(" ", ".")
+                # Add to cache
+                self.cache.append({'title': search_title, 'year': year, 'result': genre})
+                # Maintain cache size
+                if len(self.cache) > 50:
+                    self.cache.pop(0)
+                return genre
+            else:
+                # Cache the search with no result
+                self.cache.append({'title': search_title, 'year': year, 'result': None})
+        return None
+
 
 #
 # scene2arr.py, scenerename.py
