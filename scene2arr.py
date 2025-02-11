@@ -443,32 +443,6 @@ def main(args=None):
         threads = []
         bots = []
 
-        # Define a list of humorous version strings
-        version_strings = [
-            "HexChat 2.16.2 [x64] / Microsoft Windows 10 Pro (x64) [AMD EPYC 9655P 96-Core Processor (4.50GHz)]",
-            "mIRC 6.35 / Windows XP SP3 [Intel Pentium III 1.0GHz]",
-            "irssi 1.2.2 / Debian 3.1 [Sun UltraSPARC-II 450MHz]",
-            "AndroIRC 5.2.1 / Android 2.3.6 [ARM Cortex-A8 1.0GHz]",
-            "Colloquy 2.4 / Mac OS X 10.6 [PowerPC G4 867MHz]",
-            "HexChat 2.16.2 / Tesla Model S Infotainment System [Intel Atom E8000 1.04GHz]",
-            "XChat 2.7.1 / Samsung Smart TV [ARM Cortex-A9 1.0GHz]",
-            "Quassel IRC 0.13.1 / Raspberry Pi Zero [ARM1176JZF-S 1.0GHz]",
-            "Custom Homebrew IRC v0.1 - Nintendo Game Boy (DMG-01) - 4.19 MHz | 8 KB RAM | No multitasking, send help.",
-            "GEOS-IRC v1.0 | Commodore 64",
-            "Sinclair BASIC IRC [ZX Spectrum 48K] 3.5 MHz / 48 KB RAM",
-            "IRCalc v0.9b [TI-83+]",
-            "AmIRC 2.2 — Commodore Amiga 500",
-            "ProTerm 3.1 (Apple IIe) - 1.023 MHz - 64 KB RAM - Beep boop, waiting for my 300 baud modem to catch up.",
-            "IRCjr v1.00 — IBM PC XT — 4.77 MHz | 640 KB RAM",
-            "UNIX BSD 4.2 IRC — DEC VAX-11/780 — 1.0 MIPS — 8 MB RAM — This client weighs more than your car.",
-            "QIRC v3.0 (IBM AS/400) — 6.9 MHz",
-            "CrayOS IRC v1.1 — Cray-1 — 80 MHz — 8 MB RAM — Liquid-cooled shitposting at $5M per message.",
-            "ClusterIRC v9.0 — IBM Blue Gene/P — 850 MHz × 294,912 cores — 80 TB RAM — Running an IRC client across 72 racks because why not?",
-            "UltraIRC v2.0 [Fujitsu Fugaku] — 48-core ARM A64FX",
-            "MicroIRC v0.2 // ESP8266 // 80 MHz // 160 KB RAM",
-            "TuberNet IRC v1.0 — Potato — 0.01 Hz — 0.0001 KB RAM — Electrically unstable, may disconnect when dehydrated.",
-        ]
-
         output_bots = [OutputBot(
             args,
             logger,
@@ -481,7 +455,6 @@ def main(args=None):
             ircchannels=output_server["channels"],  # Pass the list of channels directly
             nickserv=output_server.get("nickserv", None),
             nickserv_command=output_server.get("nickserv_command", None),
-            version=random.choice(version_strings),  # Select a random version string
             password=output_server.get("password", None)
         ) for output_server in cfg.get("output_servers", [])]
 
@@ -514,7 +487,6 @@ def main(args=None):
                 nickserv,
                 nickserv_command,
                 output_bots,
-                version=random.choice(version_strings),  # Select a random version string
                 password=password,
             )
             t = threading.Thread(target=bot.start)

@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 import requests
+from collections import deque
 
 import irc.bot
 import irc.connection
@@ -95,7 +96,6 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         channels,
         nickserv,
         nickserv_command,
-        version,  # Add version parameter
         password=None,
     ):
         self.args = args
@@ -110,7 +110,6 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         self.password = password
         self.nickserv = nickserv
         self.nickserv_command = nickserv_command
-        self.version = version  # Store version as an instance variable
 
         if self.ssl_enabled:
             factory = irc.connection.Factory(wrapper=ssl.wrap_socket)
@@ -126,6 +125,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
 
     def start(self):
         while not self.intentional_disconnect:
+            self.set_version()
             try:
                 super().start()
             except Exception as e:
@@ -178,11 +178,41 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         if message:
             self.connection.send_raw(f"AWAY :{message}")
 
+    version_strings = [
+        "HexChat 2.16.2 [x64] / Microsoft Windows 10 Pro (x64) [AMD EPYC 9655P 96-Core Processor (4.50GHz)]",
+        "mIRC 6.35 / Windows XP SP3 [Intel Pentium III 1.0GHz]",
+        "irssi 1.2.2 / Debian 3.1 [Sun UltraSPARC-II 450MHz]",
+        "AndroIRC 5.2.1 / Android 2.3.6 [ARM Cortex-A8 1.0GHz]",
+        "Colloquy 2.4 / Mac OS X 10.6 [PowerPC G4 867MHz]",
+        "HexChat 2.16.2 / Tesla Model S Infotainment System [Intel Atom E8000 1.04GHz]",
+        "XChat 2.7.1 / Samsung Smart TV [ARM Cortex-A9 1.0GHz]",
+        "Quassel IRC 0.13.1 / Raspberry Pi Zero [ARM1176JZF-S 1.0GHz]",
+        "Custom Homebrew IRC v0.1 - Nintendo Game Boy (DMG-01) - 4.19 MHz | 8 KB RAM | No multitasking, send help.",
+        "GEOS-IRC v1.0 | Commodore 64",
+        "Sinclair BASIC IRC [ZX Spectrum 48K] 3.5 MHz / 48 KB RAM",
+        "IRCalc v0.9b [TI-83+]",
+        "AmIRC 2.2 — Commodore Amiga 500",
+        "ProTerm 3.1 (Apple IIe) - 1.023 MHz - 64 KB RAM - Beep boop, waiting for my 300 baud modem to catch up.",
+        "IRCjr v1.00 — IBM PC XT — 4.77 MHz | 640 KB RAM",
+        "UNIX BSD 4.2 IRC — DEC VAX-11/780 — 1.0 MIPS — 8 MB RAM — This client weighs more than your car.",
+        "QIRC v3.0 (IBM AS/400) — 6.9 MHz",
+        "CrayOS IRC v1.1 — Cray-1 — 80 MHz — 8 MB RAM — Liquid-cooled shitposting at $5M per message.",
+        "ClusterIRC v9.0 — IBM Blue Gene/P — 850 MHz x 294,912 cores — 80 TB RAM — Running an IRC client across 72 racks because why not?",
+        "UltraIRC v2.0 [Fujitsu Fugaku] — 48-core ARM A64FX",
+        "MicroIRC v0.2 // ESP8266 // 80 MHz // 160 KB RAM",
+        "TuberNet IRC v1.0 — Potato — 0.01 Hz — 0.0001 KB RAM — Electrically unstable, may disconnect when dehydrated.",
+    ]
+
+    def set_version(self, version=random.choice(version_strings)):
+        if version:
+            self.version=version  # Select a random version string
+
     def on_welcome(self, c, e):
         self.logger.info(f"{c.server}: Connected to server.")
         self.set_away()
         if self.nickserv and self.nickserv_command:
             c.privmsg(self.nickserv, self.nickserv_command)
+            time.sleep(1)
         for channel in self.ircchannels:
             if "password" in channel:
                 c.join(channel["name"], channel["password"])
@@ -192,6 +222,8 @@ class IRCBot(irc.bot.SingleServerIRCBot):
 
     def get_version(self):
         return self.version  # Return the instance-specific version string
+    
+
 
 class InputBot(IRCBot):
     def __init__(
@@ -208,10 +240,9 @@ class InputBot(IRCBot):
         nickserv,
         nickserv_command,
         output_bots,
-        version,
         password=None,
     ):
-        super().__init__(args, logger, name, server, port, ssl_enabled, nickname, realname, ircchannels, nickserv, nickserv_command, version, password)
+        super().__init__(args, logger, name, server, port, ssl_enabled, nickname, realname, ircchannels, nickserv, nickserv_command, password)
         self.args = args
         self.logger = logger
         self.output_bots = output_bots
@@ -644,15 +675,15 @@ class OutputBot(IRCBot):
         ircchannels,
         nickserv,
         nickserv_command,
-        version,
         password=None,
     ):
-        super().__init__(args, logger, name, host, port, ssl_enabled, nickname, realname, ircchannels, nickserv, nickserv_command, version, password)
+        super().__init__(args, logger, name, host, port, ssl_enabled, nickname, realname, ircchannels, nickserv, nickserv_command, password)
         self.pre_channels = [channel["name"] for channel in ircchannels if channel["type"] == "pre"]
         self.nuke_channels = [channel["name"] for channel in ircchannels if channel["type"] == "nuke"]
         self.info_channels = [channel["name"] for channel in ircchannels if channel["type"] == "info"]
         self.logger.info(f"OutputBot {name} initialized with channels: {ircchannels}")
 
+        # TODO: Currently we spin up a new instance for every output_server - not ideal!
         self.musicbrainz_client = MusicBrainzClient()
         self.omdb_client = OMDBClient(os.getenv("OMDB_APIKEY", ""))
 
@@ -734,12 +765,12 @@ class OutputBot(IRCBot):
             # Call the PHP script to get the type of release
             try:
                 output = subprocess.check_output(['php', 'parserelease.php', data["release"], data["section"]], text=True).strip()
-                jsondata = json.loads(output)
+                parsed_release = json.loads(output)
                 #print(jsondata)
-                data["section"] = self.determine_section(jsondata)
-                if jsondata["type"] in ["Music", "TV", "Movie"]:
+                data["section"] = self.determine_section(parsed_release)
+                if parsed_release["type"] in ["Music", "TV", "Movie"]:
                     broadcast_genre = True
-                    print(jsondata)
+                    print(parsed_release)
             except subprocess.CalledProcessError as e:
                 self.logger.critical(f"Error calling PHP script: {e}", exc_info=True)
                 exit(1)
@@ -765,11 +796,15 @@ class OutputBot(IRCBot):
             self.connection.privmsg(channel, message)
             self.logger.info(f"OutputBot {self.name} sent message to {channel}: {message}")
         
-        if broadcast_genre and jsondata["type"] == "Music":
-            artist = jsondata.get("artist")
-            title = jsondata.get("title")
-            title_extra = jsondata.get("title_extra")
-            try:
+        if broadcast_genre:
+            self.determine_genre(parsed_release, data)
+
+    def determine_genre(self, parsed_release, data):
+        try:            
+            if parsed_release["type"] == "Music":
+                artist = parsed_release.get("artist")
+                title = parsed_release.get("title")
+                title_extra = parsed_release.get("title_extra")
                 if artist:
                     genres = self.musicbrainz_client.get_genres(artist, title)
                 # [PRE] [FLAC] VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD 
@@ -784,19 +819,13 @@ class OutputBot(IRCBot):
                         "release": data["release"],
                         "genre": genre_string                            
                     }
-            except requests.exceptions.HTTPError as e:
-                self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
-            except requests.exceptions.ConnectionError as e:
-                self.logger.error(f"Connection error occurred: {e}", exc_info=True)
-            except Exception as e:
-                self.logger.error(f"{ERROR}: {Exception} - {e}", exc_info=True)
-            self.broadcast("info", genre_message)
-        elif broadcast_genre and jsondata["type"] in ["TV", "Movie"]:
-            title = jsondata.get("title")
-            title_extra = jsondata.get("title_extra")
-            country = jsondata.get("country")
-            year = jsondata.get("year")
-            try:
+                    self.broadcast("info", genre_message)
+            elif parsed_release["type"] in ["TV", "Movie"]:
+                title = parsed_release.get("title")
+                title_extra = parsed_release.get("title_extra")
+                country = parsed_release.get("country")
+                year = parsed_release.get("year")
+
                 genres = self.omdb_client.get_genre(title, title_extra, country, year)
                 if genres:
                     genre_message = {
@@ -805,25 +834,34 @@ class OutputBot(IRCBot):
                         "genre": genres
                     }
                     self.broadcast("info", genre_message)
-            except requests.exceptions.HTTPError as e:
-                self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
-            except requests.exceptions.ConnectionError as e:
-                self.logger.error(f"Connection error occurred: {e}", exc_info=True)
-            except Exception as e:
-                self.logger.error(f"{ERROR}: {Exception} - {e}", exc_info=True)
+        except requests.exceptions.HTTPError as e:
+            self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
+        except requests.exceptions.ConnectionError as e:
+            self.logger.error(f"Connection error occurred: {e}", exc_info=True)
+        except Exception as e:
+            self.logger.error(f"{ERROR}: {Exception} - {e}", exc_info=True)
 
 class MusicBrainzClient:
-    # Example usage:
-    # client = MusicBrainzClient()
-    # genres = client.get_genres("Nirvana", "Nevermind")
-    # print(genres)
     def __init__(self):
         self.base_url = "https://musicbrainz.org/ws/2/"
-        self.headers = {
-            "User-Agent": "pySceneTools/dev (dotmatrix @t riseup.net)"
-        }
+        self.headers = {"User-Agent": "pySceneTools/dev (dotmatrix @t riseup.net)"}
+        self.api_hits = deque()
+
+    def log_api_hits(self):
+        now = time.time()
+        # Remove hits older than 24 hours
+        while self.api_hits and self.api_hits[0] < now - 86400:
+            self.api_hits.popleft()
+        hits_last_24h = len(self.api_hits)
+        
+        # Count hits in the last hour
+        hits_last_hour = sum(1 for hit in self.api_hits if hit >= now - 3600)
+        
+        print(f"MusicBrainz API hits in the last 24 hours: {hits_last_24h} - in the last hour: {hits_last_hour}")
 
     def search_artist(self, artist_name):
+        self.api_hits.append(time.time())
+        self.log_api_hits()
         url = f"{self.base_url}artist/"
         params = {
             "query": artist_name,
@@ -834,6 +872,8 @@ class MusicBrainzClient:
         return response.json()
 
     def search_album(self, artist_id, album_title):
+        self.api_hits.append(time.time())
+        self.log_api_hits()
         url = f"{self.base_url}release-group/"
         params = {
             "artist": artist_id,
@@ -860,6 +900,8 @@ class MusicBrainzClient:
             "inc": "genres",
             "fmt": "json"
         }
+        self.api_hits.append(time.time())
+        self.log_api_hits()
         response = requests.get(url, headers=self.headers, params=params)
         response.raise_for_status()
         album_info = response.json()
@@ -871,8 +913,23 @@ class OMDBClient:
         self.base_url = "http://www.omdbapi.com/"
         self.api_key = api_key
         self.cache = []
+        self.api_hits = deque()
+
+    def log_api_hits(self):
+        now = time.time()
+        # Remove hits older than 24 hours
+        while self.api_hits and self.api_hits[0] < now - 86400:
+            self.api_hits.popleft()
+        hits_last_24h = len(self.api_hits)
+        
+        # Count hits in the last hour
+        hits_last_hour = sum(1 for hit in self.api_hits if hit >= now - 3600)
+        
+        print(f"OMDB API hits in the last 24 hours: {hits_last_24h} - in the last hour: {hits_last_hour}")
 
     def search_title(self, title, year=None):
+        self.api_hits.append(time.time())
+        self.log_api_hits()
         params = {
             "t": title,
             "apikey": self.api_key
@@ -883,6 +940,10 @@ class OMDBClient:
         response.raise_for_status()
         print(response.json())
         return response.json()
+
+    def normalize_title(self, title):
+        title = re.sub(r'\W+', '', title)
+        return re.sub(r'\s+', ' ', title).lower()
 
     def get_genre(self, title, title_extra, country, year=None):
         search_titles = [title]
@@ -896,10 +957,14 @@ class OMDBClient:
                 if cached_query['title'] == search_title and cached_query['year'] == year:
                     return cached_query['result']
             result = self.search_title(search_title, year)
-            if result.get("Title") == title:
+            normalized_search_title = self.normalize_title(title)
+            normalized_result_title = self.normalize_title(result.get("Title", ""))
+            if normalized_result_title == normalized_search_title:
                 genre = result.get("Genre")
                 if genre:
                     genre = genre.lower().replace(", ", "/").replace(" ", ".")
+                    if genre == "n/a":
+                        genre = None
                 # Add to cache
                 self.cache.append({'title': search_title, 'year': year, 'result': genre})
                 # Maintain cache size
