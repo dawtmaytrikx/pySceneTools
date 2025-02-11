@@ -2,6 +2,7 @@ import os
 import re
 import sqlite3
 import datetime
+import feedparser
 import json
 import random
 import ssl
@@ -240,22 +241,26 @@ class InputBot(IRCBot):
         nickserv,
         nickserv_command,
         output_bots,
+        metadata_agent,
+        lock,
         password=None,
     ):
         super().__init__(args, logger, name, server, port, ssl_enabled, nickname, realname, ircchannels, nickserv, nickserv_command, password)
         self.args = args
         self.logger = logger
         self.output_bots = output_bots
+        self.metadata_agent = metadata_agent
+        self.lock = lock
 
         if args["predb"]:
             with sqlite3.connect(PRE_DB_FILE, check_same_thread=False) as conn:
                 self.conn = conn
 
         # we want a shared lock for all threads, so it is actually created outside of this class
-        try:
-            self.lock
-        except NameError:
-            self.lock = threading.Lock()
+        #try:
+        #    self.lock
+        #except NameError:
+        #    self.lock = threading.Lock()
 
     def disconnect(self, message="Goodbye, cruel world!"):
         if self.args["predb"]:
@@ -300,7 +305,7 @@ class InputBot(IRCBot):
                                 if self.args["irc"]:
                                     self.add_to_arr(c, e, message, parser)
                             elif current_regex == "info_regex" and self.args["predb"]:
-                                if self.process_info_regex(c, e, message, parser, currenttime):
+                                if self.process_info_regex(c, e, message, parser, currenttime, False):
                                     matched = True
                                     break
                             elif current_regex == "nuke_regex" and self.args["predb"]:
@@ -368,11 +373,12 @@ class InputBot(IRCBot):
     
     def process_pre_regex(self, c, e, message, parser, currenttime):
         result = parser.preparse(message)
-        #print(result)
         if not result or not result["release"] or not result["section"]:
             return False
+        parsed_release = None
         try:
             self.lock.acquire()
+            print("Lock acquired by process_pre_regex")
             cursor = self.conn.cursor()
             cursor.execute(
                 "SELECT release FROM pre WHERE release=?",
@@ -394,13 +400,41 @@ class InputBot(IRCBot):
                     ),
                 )
                 self.conn.commit()
-                self.broadcast("pre", result)  # Notify the Broadcaster
+
+                try:
+                    output = subprocess.check_output(['php', 'parserelease.php', result["release"], result["section"]], text=True).strip()
+                    parsed_release = json.loads(output)
+                except subprocess.CalledProcessError as e:
+                    self.logger.critical(f"Error calling PHP script: {e}", exc_info=True)
+                    exit(1)
+                except json.JSONDecodeError as e:
+                    self.logger.error(f"Error decoding JSON output: {e}", exc_info=True)
+                    return
+                except Exception as e:
+                    self.logger.error(f"{ERROR}: {Exception} - {e}", exc_info=True)
+                    return  
+
+                self.broadcast("pre", result, parsed_release)  # Notify the Broadcaster
         except sqlite3.Error as error:
             self.logger.error(f"{c.server}/{e.target} - {error} - {message}", exc_info=True)
         finally:
             cursor.close()
             self.lock.release()
-            return True
+            print("Lock released by process_pre_regex")
+        
+        if not row and parsed_release:
+            # Determine genre using MetadataAgent
+            genres = self.metadata_agent.determine_genre(parsed_release)
+            if genres:
+                genre_string = '/'.join(genres)
+                genre_message = {
+                    "type": "GENRE",
+                    "release": result["release"],
+                    "genre": genre_string
+                }
+                self.process_info_regex(c, e, genre_message, parser, currenttime, True)
+        
+        return True
 
     def process_nuke_regex(self, c, e, message, parser, currenttime):
         result = parser.nukeparse(message)
@@ -413,6 +447,7 @@ class InputBot(IRCBot):
 
         try:
             self.lock.acquire()
+            print("Lock acquired by process_nuke_regex")
             cursor = self.conn.cursor()
 
             # predataba.se currently doesn't report modnukes correctly
@@ -505,19 +540,28 @@ class InputBot(IRCBot):
         finally:
             cursor.close()
             self.lock.release()
+            print("Lock released by process_nuke_regex")
         return True
 
-    def process_info_regex(self, c, e, message, parser, currenttime):
-        result = parser.infoparse(message)
-        #print(result)
-        if not result or not result["release"] or not result["type"]:
-            return False
-        
-        result["size"] = round(float(result["size"])) if result["size"] else None
-        result["files"] = int(result["files"]) if result["files"] else None
+    def process_info_regex(self, c, e, message, parser, currenttime, skip_parse=False):
+        result = {}
+        if not skip_parse:
+            result = parser.infoparse(message)
+            #print(result)
+            if not result or not result["release"] or not result["type"]:
+                return False
+            result["size"] = round(float(result["size"])) if result["size"] else None
+            result["files"] = int(result["files"]) if result["files"] else None
+        elif skip_parse:
+            result["type"] = message.get("type")
+            result["release"] = message.get("release")
+            result["files"] = message.get("files")
+            result["size"] = message.get("size")
+            result["genre"] = message.get("genre")
 
         try:
             self.lock.acquire()
+            print("Lock acquired by process_info_regex")
             cursor = self.conn.cursor()
             cursor.execute(
                 "SELECT release, size, files, genre FROM pre WHERE release=?",
@@ -553,7 +597,7 @@ class InputBot(IRCBot):
                             currenttime,
                         ),
                     )
-                    #self.broadcast("info", result)  # Notify the Broadcaster
+                    self.broadcast("info", result)  # Notify the Broadcaster
             else:
                 if not row[3] or len(row[3]) == 1:
                     if result["type"].lower() == "genre":
@@ -564,7 +608,7 @@ class InputBot(IRCBot):
                                 result["release"],
                             ),
                         )
-                        #self.broadcast("info", result)  # Notify the Broadcaster
+                        self.broadcast("info", result)  # Notify the Broadcaster
                 if not row[1] and not row[2]:
                     if result["type"].lower() == "info":
                         cursor.execute(
@@ -582,7 +626,8 @@ class InputBot(IRCBot):
         finally:
             cursor.close()
             self.lock.release()
-            return True
+            print("Lock released by process_info_regex")
+        return True
 
     def process_addold_regex(self, c, e, message, parser):
         result = parser.addoldparse(message)
@@ -594,6 +639,7 @@ class InputBot(IRCBot):
 
         try:
             self.lock.acquire()
+            print("Lock acquired by process_addold_regex")
             cursor = self.conn.cursor()
             cursor.execute(
                 "SELECT release, type, section, size, files, genre, timestamp FROM pre WHERE release=?",
@@ -655,11 +701,12 @@ class InputBot(IRCBot):
         finally:
             cursor.close()
             self.lock.release()
-            return True
+            print("Lock released by process_addold_regex")
+        return True
         
-    def broadcast(self, message_type, data):
+    def broadcast(self, message_type, data, parsed_release=None):
         for bot in self.output_bots:
-            bot.broadcast(message_type, data)
+            bot.broadcast(message_type, data, parsed_release)
 
 class OutputBot(IRCBot):
     def __init__(
@@ -757,33 +804,19 @@ class OutputBot(IRCBot):
         #else:
         return "PRE"
 
-    def broadcast(self, message_type, data):
+    def broadcast(self, message_type, data, parsed_release=None):
         channels = []
-        broadcast_genre = False
         if message_type == "pre":
             channels = self.pre_channels
-            # Call the PHP script to get the type of release
-            try:
-                output = subprocess.check_output(['php', 'parserelease.php', data["release"], data["section"]], text=True).strip()
-                parsed_release = json.loads(output)
-                #print(jsondata)
-                data["section"] = self.determine_section(parsed_release)
-                if parsed_release["type"] in ["Music", "TV", "Movie"]:
-                    broadcast_genre = True
-                    print(parsed_release)
-            except subprocess.CalledProcessError as e:
-                self.logger.critical(f"Error calling PHP script: {e}", exc_info=True)
-                exit(1)
-            except json.JSONDecodeError as e:
-                self.logger.error(f"Error decoding JSON output: {e}", exc_info=True)
-                return
-            except Exception as e:
-                self.logger.error(f"{ERROR}: {Exception} - {e}", exc_info=True)
-                return  
+            data["section"] = self.determine_section(parsed_release)
         elif message_type == "nuke":
             channels = self.nuke_channels
         elif message_type == "info":
             channels = self.info_channels
+            if data["type"] == "GENRE" and data["genre"]:
+                data["genre"] = data["genre"].split('/')
+            #elif data["type"] == "GENRE" and not data["genre"]:
+            #    raise ValueError(f"Invalid genre data: {data}")
 
         # Create a new dictionary without None values
         filtered_data = {}
@@ -795,51 +828,6 @@ class OutputBot(IRCBot):
         for channel in channels:
             self.connection.privmsg(channel, message)
             self.logger.info(f"OutputBot {self.name} sent message to {channel}: {message}")
-        
-        if broadcast_genre:
-            self.determine_genre(parsed_release, data)
-
-    def determine_genre(self, parsed_release, data):
-        try:            
-            if parsed_release["type"] == "Music":
-                artist = parsed_release.get("artist")
-                title = parsed_release.get("title")
-                title_extra = parsed_release.get("title_extra")
-                if artist:
-                    genres = self.musicbrainz_client.get_genres(artist, title)
-                # [PRE] [FLAC] VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD 
-                # {'release': 'VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD', 'title': 'Various', 'title_extra': 'Hip Hop Classics Volume Three', 'group': 'THEVOiD', 'year': 1997, 'date': None, 'season': None, 'episode': None, 'disc': None, 'flags': None, 'source': 'CD', 'format': 'FLAC', 'resolution': None, 'audio': None, 'device': None, 'os': None, 'version': None, 'language': None, 'country': None, 'type': 'Music'}
-                else: 
-                    genres = self.musicbrainz_client.get_genres(title, title_extra)
-                if genres:
-                    genres = [genre.lower().replace(' & ', '&').replace(' and ', '&').replace(' ', '.') for genre in genres]
-                    genre_string = '/'.join(genres)
-                    genre_message = {
-                        "type": "GENRE",
-                        "release": data["release"],
-                        "genre": genre_string                            
-                    }
-                    self.broadcast("info", genre_message)
-            elif parsed_release["type"] in ["TV", "Movie"]:
-                title = parsed_release.get("title")
-                title_extra = parsed_release.get("title_extra")
-                country = parsed_release.get("country")
-                year = parsed_release.get("year")
-
-                genres = self.omdb_client.get_genre(title, title_extra, country, year)
-                if genres:
-                    genre_message = {
-                        "type": "GENRE",
-                        "release": data["release"],
-                        "genre": genres
-                    }
-                    self.broadcast("info", genre_message)
-        except requests.exceptions.HTTPError as e:
-            self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
-        except requests.exceptions.ConnectionError as e:
-            self.logger.error(f"Connection error occurred: {e}", exc_info=True)
-        except Exception as e:
-            self.logger.error(f"{ERROR}: {Exception} - {e}", exc_info=True)
 
 class MusicBrainzClient:
     def __init__(self):
@@ -945,7 +933,7 @@ class OMDBClient:
         title = re.sub(r'\W+', '', title)
         return re.sub(r'\s+', ' ', title).lower()
 
-    def get_genre(self, title, title_extra, country, year=None):
+    def get_genres(self, title, title_extra, country, year=None):
         search_titles = [title]
         if title_extra:
             search_titles.append(title_extra)
@@ -961,10 +949,8 @@ class OMDBClient:
             normalized_result_title = self.normalize_title(result.get("Title", ""))
             if normalized_result_title == normalized_search_title:
                 genre = result.get("Genre")
-                if genre:
-                    genre = genre.lower().replace(", ", "/").replace(" ", ".")
-                    if genre == "n/a":
-                        genre = None
+                if genre and genre == "n/a":
+                    genre = None
                 # Add to cache
                 self.cache.append({'title': search_title, 'year': year, 'result': genre})
                 # Maintain cache size
@@ -975,6 +961,120 @@ class OMDBClient:
                 # Cache the search with no result
                 self.cache.append({'title': search_title, 'year': year, 'result': None})
         return None
+
+
+class MetadataAgent:
+    def __init__(self, logger, output_bots, lock):
+        self.musicbrainz_client = MusicBrainzClient()
+        self.omdb_client = OMDBClient(os.getenv("OMDB_APIKEY", ""))
+        self.srrdb_feed_url = "https://www.srrdb.com/feed/srrs"
+        self.srrdb_api_url = "https://api.srrdb.com/v1/details/"
+        self.logger = logger
+        self.output_bots = output_bots
+        self.lock = lock
+
+    def determine_genre(self, parsed_release):
+        try:
+            if parsed_release["type"] == "Music":
+                artist = parsed_release.get("artist")
+                title = parsed_release.get("title")
+                title_extra = parsed_release.get("title_extra")
+                if artist:
+                    genres = self.musicbrainz_client.get_genres(artist, title)
+                # [PRE] [FLAC] VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD 
+                # {'release': 'VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD', 'title': 'Various', 'title_extra': 'Hip Hop Classics Volume Three', 'group': 'THEVOiD', 'year': 1997, 'date': None, 'season': None, 'episode': None, 'disc': None, 'flags': None, 'source': 'CD', 'format': 'FLAC', 'resolution': None, 'audio': None, 'device': None, 'os': None, 'version': None, 'language': None, 'country': None, 'type': 'Music'}
+                else:
+                    genres = self.musicbrainz_client.get_genres(title, title_extra)
+                if genres:
+                    genres = [genre.lower().replace(' & ', '&').replace(' and ', '&').replace(' ', '.') for genre in genres]
+                    return genres
+            elif parsed_release["type"] in ["TV", "Movie"]:
+                title = parsed_release.get("title")
+                title_extra = parsed_release.get("title_extra")
+                country = parsed_release.get("country")
+                year = parsed_release.get("year")
+
+                genres = self.omdb_client.get_genres(title, title_extra, country, year)
+                if genres:
+                    genres = genres.split(", ")
+                    genres = [genre.lower().replace(" ", ".") for genre in genres]
+                    return genres
+        except requests.exceptions.HTTPError as e:
+            self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
+        except requests.exceptions.ConnectionError as e:
+            self.logger.error(f"Connection error occurred: {e}", exc_info=True)
+        except Exception as e:
+            self.logger.error(f"{ERROR}: {Exception} - {e}", exc_info=True)
+        return None
+
+    def determine_info(self):
+        time.sleep(60)  # Wait for the OutputBots to start
+        self.conn = DB('pre.db').connection
+        while True:
+            try:
+                feed = feedparser.parse(self.srrdb_feed_url)
+                for entry in feed.entries:
+                    release_name = entry.title
+                    # Check the release name against the pre table
+                    cursor = self.conn.cursor()
+                    cursor.execute("SELECT release, files, size FROM pre WHERE release=?", (release_name,))
+                    row = cursor.fetchone()
+                    cursor.close()
+                    if row and (row[1] is None or row[2] is None):
+                        # Fetch details from SRRDB API
+                        response = requests.get(f"{self.srrdb_api_url}{release_name}")
+                        response.raise_for_status()
+                        data = response.json()
+                        files = data.get("files", [])
+                        total_files = len([f for f in files if not f["name"].lower().endswith((".nfo", ".sfv", ".m3u")) and not any(folder in f["name"].lower() for folder in ["subs/", "proof/", "sample/"])])
+                        total_size = sum(f["size"] for f in files if not f["name"].lower().endswith((".nfo", ".sfv", ".m3u")) and not any(folder in f["name"].lower() for folder in ["subs/", "proof/", "sample/"]))
+                        total_size_mib = round(total_size / (1024 * 1024))
+
+                        info_message = {
+                            "type": "INFO",
+                            "release": release_name,
+                            "files": total_files,
+                            "size": total_size_mib
+                        }
+                        self.process_info_message(info_message)
+            except Exception as e:
+                self.logger.error(f"Error in determine_info: {e}", exc_info=True)
+            time.sleep(60)  # Check every minute
+
+    def process_info_message(self, message):
+        result = {}
+        result["type"] = message.get("type")
+        result["release"] = message.get("release")
+        result["files"] = message.get("files")
+        result["size"] = message.get("size")
+        result["genre"] = message.get("genre")
+
+        try:
+            self.lock.acquire()
+            print("Lock acquired by process_info_message")
+            cursor = self.conn.cursor()
+
+            if result["type"].lower() == "info":
+                cursor.execute(
+                    "UPDATE pre SET size=?, files=? WHERE release=?",
+                    (
+                        result["size"],
+                        result["files"],
+                        result["release"],
+                    ),
+                )
+                self.broadcast("info", result)  # Notify the Broadcaster
+            self.conn.commit()
+        except sqlite3.Error as error:
+            self.logger.error(f"srrAPI - {error} - {message}", exc_info=True)
+        finally:
+            cursor.close()
+            self.lock.release()
+            print("Lock released by process_info_message")
+
+    def broadcast(self, message_type, data, parsed_release=None):
+        for bot in self.output_bots:
+            bot.broadcast(message_type, data, parsed_release)
 
 
 #

@@ -117,6 +117,7 @@ def create_scene2arr_db(dbname):
         );"""
     )
 
+    db.cursor.execute("PRAGMA user_version = 2")
     db.connection.commit()
 
     return db
@@ -156,6 +157,7 @@ def create_pre_db(dbname):
         )"""
     )
 
+    db.cursor.execute("PRAGMA user_version = 3")
     db.connection.commit()
 
 
@@ -439,7 +441,7 @@ def main(args=None):
             logger.error(f"{ERROR} loading {IRC_CONFIG_FILE}:", e)
             sys.exit(1)
 
-        InputBot.lock = threading.Lock()
+        shared_lock = threading.Lock()
         threads = []
         bots = []
 
@@ -452,7 +454,7 @@ def main(args=None):
             ssl_enabled=output_server.get("ssl_enabled", True),
             nickname=output_server.get("nickname", f"humanperson{random.randint(100, 999)}"),
             realname=output_server.get("realname", None),
-            ircchannels=output_server["channels"],  # Pass the list of channels directly
+            ircchannels=output_server["channels"],
             nickserv=output_server.get("nickserv", None),
             nickserv_command=output_server.get("nickserv_command", None),
             password=output_server.get("password", None)
@@ -462,6 +464,9 @@ def main(args=None):
             t = threading.Thread(target=bot.start)
             threads.append(t)
             bots.append(bot)
+
+        metadata_agent = MetadataAgent(logger, output_bots, shared_lock)  # Instantiate MetadataAgent
+        threads.append(threading.Thread(target=metadata_agent.determine_info, daemon=True))
 
         for server in cfg["input_servers"]:
             name = server["name"]
@@ -487,6 +492,8 @@ def main(args=None):
                 nickserv,
                 nickserv_command,
                 output_bots,
+                metadata_agent,
+                shared_lock,
                 password=password,
             )
             t = threading.Thread(target=bot.start)

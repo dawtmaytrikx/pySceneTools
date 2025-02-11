@@ -1,6 +1,7 @@
 import datetime
 import sqlite3
 import os
+import yaml
 
 def get_db_version(db_path):
     conn = sqlite3.connect(db_path)
@@ -277,6 +278,16 @@ def convert_pre_db_v3(dbname):
     conn.close()
     set_db_version(dbname, 3)  # Set the new version after conversion
 
+def update_irc_yaml(yaml_file):
+    with open(yaml_file, 'r') as file:
+        data = yaml.safe_load(file)
+
+    if 'servers' in data:
+        data['input_servers'] = data.pop('servers')
+
+    with open(yaml_file, 'w') as file:
+        yaml.safe_dump(data, file)
+
 # Convert databases if they exist and haven't been converted yet
 if os.path.exists('./scene2arr.db') and get_db_version('./scene2arr.db') < 2:
     convert_scene2arr_db_v2('./scene2arr.db')
@@ -294,3 +305,6 @@ if os.path.exists('./test/irc2arr.db'):
 # Convert pre.db to version 3 if it exists and hasn't been converted yet
 if os.path.exists('./pre.db') and get_db_version('./pre.db') < 3:
     convert_pre_db_v3('./pre.db')
+
+if os.path.exists('./pre.db'):
+    update_irc_yaml('./irc.yaml')

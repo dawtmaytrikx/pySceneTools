@@ -145,7 +145,7 @@ input_servers:
       - name: '#pre.spam'
         info_examples:
           - '<pre> info | The.Duel.2023.1080p.BluRay.x264-JustWatch - 93 F & 13177 MB'
-          # no genre examples
+          - '<pre> genre | The.Witcher.Sirens.of.the.Deep.2025.MULTi.1080p.WEB.x264-AMB3R - Animation/Action/Adventure'
         info_regex: '((?:genre)|(?:info))\s+\|\s+([\w.\(\)-]+)\s+-\s+(?:(?:(\d+)\s+F\s+&\s+([\d.]+)\s+MB)|(?:([^\d][\w-]*)))'
         info_regex_type: 1
         info_regex_release: 2

@@ -9,7 +9,7 @@ class TestIRCMessageParser(unittest.TestCase):
             cls.config = yaml.safe_load(file)
 
     def test_pre_regex(self):
-        for server in self.config['servers']:
+        for server in self.config['input_servers']:
             for channel in server['channels']:
                 if 'pre_regex' in channel:
                     parser = ircMessageParser(channel)
@@ -23,7 +23,7 @@ class TestIRCMessageParser(unittest.TestCase):
                             self.assertIsNotNone(result.get("release"))
 
     def test_nuke_regex(self):
-        for server in self.config['servers']:
+        for server in self.config['input_servers']:
             for channel in server['channels']:
                 if 'nuke_regex' in channel:
                     parser = ircMessageParser(channel)
@@ -39,7 +39,7 @@ class TestIRCMessageParser(unittest.TestCase):
                             self.assertIsNotNone(result.get("nukenet"))
 
     def test_info_regex(self):
-        for server in self.config['servers']:
+        for server in self.config['input_servers']:
             for channel in server['channels']:
                 if 'info_regex' in channel:
                     parser = ircMessageParser(channel)
@@ -54,7 +54,7 @@ class TestIRCMessageParser(unittest.TestCase):
                             self.assertTrue(result.get("files") or result.get("size") or result.get("genre"))
 
     def test_addold_regex(self):
-        for server in self.config['servers']:
+        for server in self.config['input_servers']:
             for channel in server['channels']:
                 if 'addold_regex' in channel:
                     parser = ircMessageParser(channel)
@@ -74,7 +74,7 @@ class TestIRCMessageParser(unittest.TestCase):
 
 
     def test_pre_examples_against_other_regexes(self):
-        for server in self.config['servers']:
+        for server in self.config['input_servers']:
             for channel in server['channels']:
                 if 'pre_examples' in channel:
                     parser = ircMessageParser(channel)
@@ -99,7 +99,7 @@ class TestIRCMessageParser(unittest.TestCase):
                                 self.assertIsNone(result)
 
     def test_nuke_examples_against_other_regexes(self):
-        for server in self.config['servers']:
+        for server in self.config['input_servers']:
             for channel in server['channels']:
                 if 'nuke_examples' in channel:
                     parser = ircMessageParser(channel)
@@ -124,7 +124,7 @@ class TestIRCMessageParser(unittest.TestCase):
                                 self.assertIsNone(result)
 
     def test_info_examples_against_other_regexes(self):
-        for server in self.config['servers']:
+        for server in self.config['input_servers']:
             for channel in server['channels']:
                 if 'info_examples' in channel:
                     parser = ircMessageParser(channel)
@@ -149,7 +149,7 @@ class TestIRCMessageParser(unittest.TestCase):
                                 self.assertIsNone(result)
 
     def test_addold_examples_against_other_regexes(self):
-        for server in self.config['servers']:
+        for server in self.config['input_servers']:
             for channel in server['channels']:
                 if 'addold_examples' in channel:
                     parser = ircMessageParser(channel)
