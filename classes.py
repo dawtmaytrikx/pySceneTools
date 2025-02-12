@@ -1,10 +1,11 @@
-import os
-import re
-import sqlite3
+import base64
 import datetime
 import feedparser
 import json
+import os
 import random
+import re
+import sqlite3
 import ssl
 import subprocess
 import threading
@@ -962,10 +963,74 @@ class OMDBClient:
                 self.cache.append({'title': search_title, 'year': year, 'result': None})
         return None
 
+class SpotifyClient:
+    def __init__(self):
+        self.client_id = os.getenv("SPOTIFY_CLIENT_ID")
+        self.client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
+        self.access_token = None
+        self.token_expires_in = None
+        self.token_timestamp = None
+        self.api_hits = deque()
+        self.get_access_token()
+
+    def get_access_token(self):
+        auth_url = 'https://accounts.spotify.com/api/token'
+        auth_headers = {
+            'Authorization': 'Basic ' + base64.b64encode(f'{self.client_id}:{self.client_secret}'.encode()).decode()
+        }
+        auth_data = {
+            'grant_type': 'client_credentials'
+        }
+        auth_response = requests.post(auth_url, headers=auth_headers, data=auth_data)
+        auth_response.raise_for_status()
+        auth_response_data = auth_response.json()
+        self.access_token = auth_response_data['access_token']
+        self.token_expires_in = auth_response_data['expires_in']
+        self.token_timestamp = time.time()
+
+    def ensure_token_valid(self):
+        if not self.access_token or (time.time() - self.token_timestamp) >= self.token_expires_in:
+            self.get_access_token()
+
+    def log_api_hits(self):
+        now = time.time()
+        # Remove hits older than 24 hours
+        while self.api_hits and self.api_hits[0] < now - 86400:
+            self.api_hits.popleft()
+        hits_last_24h = len(self.api_hits)
+        
+        # Count hits in the last hour
+        hits_last_hour = sum(1 for hit in self.api_hits if hit >= now - 3600)
+        
+        print(f"Spotify API hits in the last 24 hours: {hits_last_24h} - in the last hour: {hits_last_hour}")
+
+    def search_artist(self, artist_name):
+        self.ensure_token_valid()
+        self.api_hits.append(time.time())
+        self.log_api_hits()
+        search_url = 'https://api.spotify.com/v1/search'
+        search_headers = {
+            'Authorization': f'Bearer {self.access_token}'
+        }
+        search_params = {
+            'q': artist_name,
+            'type': 'artist'
+        }
+        search_response = requests.get(search_url, headers=search_headers, params=search_params)
+        search_response.raise_for_status()
+        search_response_data = search_response.json()
+        return search_response_data['artists']['items'][0] if search_response_data['artists']['items'] else None
+
+    def get_genres(self, artist_name):
+        artist = self.search_artist(artist_name)
+        if artist:
+            return artist['genres']
+        return None
 
 class MetadataAgent:
     def __init__(self, logger, output_bots, lock):
         self.musicbrainz_client = MusicBrainzClient()
+        self.spotify_client = SpotifyClient()
         self.omdb_client = OMDBClient(os.getenv("OMDB_APIKEY", ""))
         self.srrdb_feed_url = "https://www.srrdb.com/feed/srrs"
         self.srrdb_api_url = "https://api.srrdb.com/v1/details/"
@@ -983,8 +1048,11 @@ class MetadataAgent:
                     genres = self.musicbrainz_client.get_genres(artist, title)
                 # [PRE] [FLAC] VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD 
                 # {'release': 'VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD', 'title': 'Various', 'title_extra': 'Hip Hop Classics Volume Three', 'group': 'THEVOiD', 'year': 1997, 'date': None, 'season': None, 'episode': None, 'disc': None, 'flags': None, 'source': 'CD', 'format': 'FLAC', 'resolution': None, 'audio': None, 'device': None, 'os': None, 'version': None, 'language': None, 'country': None, 'type': 'Music'}
-                else:
+                elif not artist:
                     genres = self.musicbrainz_client.get_genres(title, title_extra)
+                if not genres:
+                    genres = self.spotify_client.get_genres(artist or title)
+                    #print(self.spotify_client.get_genres(artist or title))
                 if genres:
                     genres = [genre.lower().replace(' & ', '&').replace(' and ', '&').replace(' ', '.') for genre in genres]
                     return genres
