@@ -88,14 +88,21 @@ def start_argparse():
     return args
 
 
-def create_scene2arr_db(dbname):
+def create_scene2arr_db(dbname, user_version=2):
     # set up the database
-    from classes import DB  # Local import to avoid circular import issue
     if not os.path.exists(dbname):
         with open(dbname, "w"):
             pass
 
     db = DB(dbname)
+
+    # Check the current user_version
+    db.cursor.execute("PRAGMA user_version")
+    current_version = db.cursor.fetchone()[0]
+
+    if current_version < user_version:
+        # Run the update script if the version is below the required version
+        subprocess.run(["python3", "run_post_update.py"])
 
     db.cursor.execute(
         """CREATE TABLE IF NOT EXISTS scenegroups (
@@ -117,19 +124,26 @@ def create_scene2arr_db(dbname):
         );"""
     )
 
-    db.cursor.execute("PRAGMA user_version = 2")
+    db.cursor.execute(f"PRAGMA user_version = {user_version}")
     db.connection.commit()
 
     return db
 
-def create_pre_db(dbname):
+def create_pre_db(dbname, user_version=3):
     # set up the database
-    from classes import DB  # Local import to avoid circular import issue
     if not os.path.exists(dbname):
         with open(dbname, "w"):
             pass
 
     db = DB(dbname)
+
+    # Check the current user_version
+    db.cursor.execute("PRAGMA user_version")
+    current_version = db.cursor.fetchone()[0]
+
+    if current_version < user_version:
+        # Run the update script if the version is below the required version
+        subprocess.run(["python3", "run_post_update.py"])
 
     db.cursor.execute(
         """CREATE TABLE IF NOT EXISTS pre (
@@ -157,8 +171,10 @@ def create_pre_db(dbname):
         )"""
     )
 
-    db.cursor.execute("PRAGMA user_version = 3")
+    db.cursor.execute(f"PRAGMA user_version = {user_version}")
     db.connection.commit()
+
+    return db
 
 
 def init_pvrs(logger):
