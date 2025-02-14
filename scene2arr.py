@@ -405,6 +405,9 @@ def update_pvr(args, logger, db, pvr, newrestriction, release=None):
 
     return pvr
 
+# Add a global stop event
+stop_event = threading.Event()
+
 def main(args=None):
     load_dotenv()
     if args is None:
@@ -420,7 +423,6 @@ def main(args=None):
         console_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
         logger.addHandler(console_handler)
 
-     
     if args["xrel"] or args["add"] or args["remove"]:
         scene2arr_db = create_scene2arr_db(SCENE2ARR_DB_FILE)
 
@@ -461,11 +463,15 @@ def main(args=None):
         ) for output_server in cfg.get("output_servers", [])]
 
         for bot in output_bots:
+            # Pass stop_event to bot so it can check for shutdown
+            bot.stop_event = stop_event
             t = threading.Thread(target=bot.start)
             threads.append(t)
             bots.append(bot)
 
-        metadata_agent = MetadataAgent(logger, output_bots, shared_lock)  # Instantiate MetadataAgent
+        metadata_agent = MetadataAgent(logger, output_bots, shared_lock)
+        # Pass stop_event to metadata_agent as well if needed
+        metadata_agent.stop_event = stop_event
         threads.append(threading.Thread(target=metadata_agent.determine_info, daemon=True))
 
         for server in cfg["input_servers"]:
@@ -496,18 +502,19 @@ def main(args=None):
                 shared_lock,
                 password=password,
             )
+            bot.stop_event = stop_event
             t = threading.Thread(target=bot.start)
             threads.append(t)
             bots.append(bot)
 
         for t in threads:
-            #t.daemon = True
             t.start()
         try:
-            while True:
+            while not stop_event.is_set():
                 time.sleep(1)
         except KeyboardInterrupt:
             logger.info(f"{INFO} Keyboard interrupt detected, exiting...")
+            stop_event.set()  # Signal all threads to stop
             for bot in bots:
                 try:
                     bot.disconnect()

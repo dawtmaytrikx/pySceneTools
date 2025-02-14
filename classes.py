@@ -126,8 +126,8 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         self.connection.set_keepalive(30)
 
     def start(self):
-        while not self.intentional_disconnect:
-            self.set_version()
+        self.set_version()
+        while not self.intentional_disconnect and not getattr(self, "stop_event", threading.Event()).is_set():
             try:
                 super().start()
             except Exception as e:
@@ -136,6 +136,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
                     self.logger.warning(f"{self.server}: Attempting to reconnect...")
                     continue # Loop back to try connecting again
                 break
+        self.disconnect()
 
     def on_disconnect(self, c, e):
         self.logger.warning(f"{c.server}: Disconnected from server.")
@@ -254,8 +255,9 @@ class InputBot(IRCBot):
         self.lock = lock
 
         if args["predb"]:
-            with sqlite3.connect(PRE_DB_FILE, check_same_thread=False) as conn:
+            with sqlite3.connect(os.getenv("PRE_DB_FILE"), check_same_thread=False) as conn:
                 self.conn = conn
+                self.conn.row_factory = sqlite3.Row
 
         # we want a shared lock for all threads, so it is actually created outside of this class
         #try:
@@ -379,7 +381,6 @@ class InputBot(IRCBot):
         parsed_release = None
         try:
             self.lock.acquire()
-            print("Lock acquired by process_pre_regex")
             cursor = self.conn.cursor()
             cursor.execute(
                 "SELECT release FROM pre WHERE release=?",
@@ -421,7 +422,6 @@ class InputBot(IRCBot):
         finally:
             cursor.close()
             self.lock.release()
-            print("Lock released by process_pre_regex")
         
         if not row and parsed_release:
             # Determine genre using MetadataAgent
@@ -448,7 +448,6 @@ class InputBot(IRCBot):
 
         try:
             self.lock.acquire()
-            print("Lock acquired by process_nuke_regex")
             cursor = self.conn.cursor()
 
             # predataba.se currently doesn't report modnukes correctly
@@ -523,7 +522,7 @@ class InputBot(IRCBot):
                 )
                 self.broadcast("nuke", result)  # Notify the Broadcaster
             else:
-                if not row[3]:
+                if not row["nukenet"]:
                     cursor.execute(
                         """
                         UPDATE nuke SET nukenet=? 
@@ -541,16 +540,17 @@ class InputBot(IRCBot):
         finally:
             cursor.close()
             self.lock.release()
-            print("Lock released by process_nuke_regex")
         return True
 
     def process_info_regex(self, c, e, message, parser, currenttime, skip_parse=False):
         result = {}
         if not skip_parse:
             result = parser.infoparse(message)
-            #print(result)
             if not result or not result["release"] or not result["type"]:
                 return False
+            # since we're generating our own genre information, we'll disregard genre messages from IRC
+            if result["type"].lower() == "genre":
+                return True
             result["size"] = round(float(result["size"])) if result["size"] else None
             result["files"] = int(result["files"]) if result["files"] else None
         elif skip_parse:
@@ -562,7 +562,6 @@ class InputBot(IRCBot):
 
         try:
             self.lock.acquire()
-            print("Lock acquired by process_info_regex")
             cursor = self.conn.cursor()
             cursor.execute(
                 "SELECT release, size, files, genre FROM pre WHERE release=?",
@@ -600,7 +599,7 @@ class InputBot(IRCBot):
                     )
                     self.broadcast("info", result)  # Notify the Broadcaster
             else:
-                if not row[3] or len(row[3]) == 1:
+                if not row["genre"] or len(row["genre"]) == 1:
                     if result["type"].lower() == "genre":
                         cursor.execute(
                             "UPDATE pre SET genre=? WHERE release=?",
@@ -610,7 +609,7 @@ class InputBot(IRCBot):
                             ),
                         )
                         self.broadcast("info", result)  # Notify the Broadcaster
-                if not row[1] and not row[2]:
+                if not row["size"] and not row["files"]:
                     if result["type"].lower() == "info":
                         cursor.execute(
                             "UPDATE pre SET size=?, files=? WHERE release=?",
@@ -627,7 +626,6 @@ class InputBot(IRCBot):
         finally:
             cursor.close()
             self.lock.release()
-            print("Lock released by process_info_regex")
         return True
 
     def process_addold_regex(self, c, e, message, parser):
@@ -640,7 +638,6 @@ class InputBot(IRCBot):
 
         try:
             self.lock.acquire()
-            print("Lock acquired by process_addold_regex")
             cursor = self.conn.cursor()
             cursor.execute(
                 "SELECT release, type, section, size, files, genre, timestamp FROM pre WHERE release=?",
@@ -702,7 +699,6 @@ class InputBot(IRCBot):
         finally:
             cursor.close()
             self.lock.release()
-            print("Lock released by process_addold_regex")
         return True
         
     def broadcast(self, message_type, data, parsed_release=None):
@@ -739,7 +735,6 @@ class OutputBot(IRCBot):
     def start(self):
         self.logger.info(f"OutputBot {self.name} starting...")
         super().start()
-        self.logger.info(f"OutputBot {self.name} connected.")
 
     def determine_section(self, data):
         if data["type"] == "ABook":
@@ -848,6 +843,16 @@ class MusicBrainzClient:
         
         print(f"MusicBrainz API hits in the last 24 hours: {hits_last_24h} - in the last hour: {hits_last_hour}")
 
+    def normalize_title(self, title):
+        # Normalize title by removing non-word characters, removing double spaces,
+        # converting to lower case, and replacing "&" with "and"
+        title = title.replace(" & ", " and ")
+        title = re.sub(r'\W+', '', title)
+        title = re.sub(r'\s+', ' ', title).lower()
+        # Convert German characters to their ASCII equivalents.
+        title = title.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+        return title
+
     def search_artist(self, artist_name):
         self.api_hits.append(time.time())
         self.log_api_hits()
@@ -882,7 +887,16 @@ class MusicBrainzClient:
         album_data = self.search_album(artist_id, album_title)
         if not album_data['release-groups']:
             return None
-        album_id = album_data['release-groups'][0]['id']
+
+        # Filter results by comparing normalized titles
+        normalized_album_title = self.normalize_title(album_title)
+        for release_group in album_data['release-groups']:
+            normalized_release_title = self.normalize_title(release_group['title'])
+            if normalized_release_title == normalized_album_title: # and release_group.get('score', 0) > 80:
+                album_id = release_group['id']
+                break
+        else:
+            return None
 
         url = f"{self.base_url}release-group/{album_id}"
         params = {
@@ -931,8 +945,14 @@ class OMDBClient:
         return response.json()
 
     def normalize_title(self, title):
+        # Normalize title by removing non-word characters, removing double spaces,
+        # converting to lower case, and replacing "&" with "and"
+        title = title.replace(" & ", " and ")
         title = re.sub(r'\W+', '', title)
-        return re.sub(r'\s+', ' ', title).lower()
+        title = re.sub(r'\s+', ' ', title).lower()
+        # Convert German characters to their ASCII equivalents.
+        title = title.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+        return title
 
     def get_genres(self, title, title_extra, country, year=None):
         search_titles = [title]
@@ -950,7 +970,7 @@ class OMDBClient:
             normalized_result_title = self.normalize_title(result.get("Title", ""))
             if normalized_result_title == normalized_search_title:
                 genre = result.get("Genre")
-                if genre and genre == "n/a":
+                if genre and genre.lower() == "n/a":
                     genre = None
                 # Add to cache
                 self.cache.append({'title': search_title, 'year': year, 'result': genre})
@@ -1027,16 +1047,203 @@ class SpotifyClient:
             return artist['genres']
         return None
 
+class TMDBClient:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.base_url = "https://api.themoviedb.org/3"
+        self.api_hits = deque()
+        self.cache = {}  # Cache keyed by normalized title (with extra params)
+        # Load genre lookup for TV shows using TMDB's genre API.
+        self.movie_genre_lookup = self.load_genre_lookup(media_type="movie", language="en")
+        self.tv_genre_lookup = self.load_genre_lookup(media_type="tv", language="en")
+
+    def load_genre_lookup(self, media_type, language="en"):
+        # Loads a mapping from genre ID to genre name.
+        url = f"{self.base_url}/genre/{media_type}/list"
+        params = {"api_key": self.api_key, "language": language}
+        resp = requests.get(url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        lookup = {genre["id"]: genre["name"] for genre in data.get("genres", [])}
+        return lookup
+
+    def log_api_hits(self):
+        now = time.time()
+        while self.api_hits and self.api_hits[0] < now - 86400:
+            self.api_hits.popleft()
+        hits_last_24h = len(self.api_hits)
+        hits_last_hour = sum(1 for hit in self.api_hits if hit >= now - 3600)
+        print(f"TMDB API hits in the last 24 hours: {hits_last_24h} - in the last hour: {hits_last_hour}")
+
+    def normalize_title(self, title):
+        # Normalize title by removing non-word characters, removing double spaces,
+        # converting to lower case, and replacing "&" with "and"
+        title = title.replace(" & ", " and ")
+        title = re.sub(r'\W+', '', title)
+        title = re.sub(r'\s+', ' ', title).lower()
+        # Convert German characters to their ASCII equivalents.
+        title = title.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+        return title
+
+    def get_genres(self, title, year=None, language=None, region=None):
+        norm_title = self.normalize_title(title)
+        key = (norm_title, year, language, region)
+        if key in self.cache:
+            return self.cache[key]
+
+        search_url = f"{self.base_url}/search/movie"
+        params = {"api_key": self.api_key, "query": title, "include_adult": False}
+        if year:
+            params["year"] = year
+        if language:
+            params["language"] = language
+        if region:
+            params["region"] = region
+
+        self.api_hits.append(time.time())
+        self.log_api_hits()
+        resp = requests.get(search_url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        results = data.get("results", [])
+        if results:
+            # Normalize and compare the search title with the result title
+            normalized_result_title = self.normalize_title(results[0].get("title", ""))
+            if normalized_result_title == norm_title:
+                movie_id = results[0]["id"]
+                detail_url = f"{self.base_url}/movie/{movie_id}"
+                detail_params = {"api_key": self.api_key}
+                if language:
+                    detail_params["language"] = language
+                self.api_hits.append(time.time())
+                self.log_api_hits()
+                detail_resp = requests.get(detail_url, params=detail_params)
+                detail_resp.raise_for_status()
+                detail_data = detail_resp.json()
+                # TMDB detail may include fully expanded "genres"
+                if "genres" in detail_data:
+                    genres_obj = detail_data.get("genres", [])
+                else:
+                    # Fall back: if only genre_ids are available, map them using our lookup.
+                    genre_ids = detail_data.get("genre_ids", [])
+                    genres_obj = [{"id": gid, "name": self.movie_genre_lookup.get(gid, "Unknown")} for gid in genre_ids]
+                genre_list = [genre["name"] for genre in genres_obj]
+                self.cache[key] = genre_list
+                return genre_list
+        self.cache[key] = None
+        return None
+
+    def get_tv_genres(self, title, year=None, language=None, region=None):
+        norm_title = self.normalize_title(title)
+        key = (norm_title, year, language, region)
+        if key in self.cache:
+            return self.cache[key]
+
+        search_url = f"{self.base_url}/search/tv"
+        params = {"api_key": self.api_key, "query": title}
+        if year:
+            params["first_air_date_year"] = year
+        if language:
+            params["language"] = language
+
+        self.api_hits.append(time.time())
+        self.log_api_hits()
+        resp = requests.get(search_url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        results = data.get("results", [])
+        if results:
+            # Use the normalize_title() method to compare release title and result title.
+            normalized_result_title = self.normalize_title(results[0].get("name", ""))
+            if normalized_result_title == norm_title:
+                tv_id = results[0]["id"]
+                detail_url = f"{self.base_url}/tv/{tv_id}"
+                detail_params = {"api_key": self.api_key}
+                if language:
+                    detail_params["language"] = language
+                self.api_hits.append(time.time())
+                self.log_api_hits()
+                detail_resp = requests.get(detail_url, params=detail_params)
+                detail_resp.raise_for_status()
+                detail_data = detail_resp.json()
+                # TMDB detail may include fully expanded "genres"
+                if "genres" in detail_data:
+                    genres_obj = detail_data.get("genres", [])
+                else:
+                    # Fall back: if only genre_ids are available, map them using our lookup.
+                    genre_ids = detail_data.get("genre_ids", [])
+                    genres_obj = [{"id": gid, "name": self.tv_genre_lookup.get(gid, "Unknown")} for gid in genre_ids]
+                genre_list = [genre["name"] for genre in genres_obj]
+                self.cache[key] = genre_list
+                return genre_list
+        self.cache[key] = None
+        return None
+
+class TVMazeClient:
+    def __init__(self):
+        self.base_url = "http://api.tvmaze.com"
+        self.api_hits = deque()
+        self.cache = {}  # Cache keyed by normalized title
+
+    def normalize_title(self, title):
+        # Normalize title by removing non-word characters, removing double spaces,
+        # converting to lower case, and replacing "&" with "and"
+        title = re.sub(r'\W+', '', title)
+        title = re.sub(r'\s+', ' ', title).lower()
+        title = title.replace(" & ", " and ")
+        # Convert German characters to their ASCII equivalents.
+        title = title.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+        return title
+
+    def log_api_hits(self):
+        now = time.time()
+        while self.api_hits and self.api_hits[0] < now - 86400:
+            self.api_hits.popleft()
+        hits_last_24h = len(self.api_hits)
+        hits_last_hour = sum(1 for hit in self.api_hits if hit >= now - 3600)
+        print(f"TVMaze API hits in the last 24 hours: {hits_last_24h} - in the last hour: {hits_last_hour}")
+
+    def get_genres(self, title):
+        norm_title = self.normalize_title(title)
+        if norm_title in self.cache:
+            return self.cache[norm_title]
+
+        search_url = f"{self.base_url}/search/shows"
+        params = {"q": title}
+        self.api_hits.append(time.time())
+        self.log_api_hits()
+        resp = requests.get(search_url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        if data:
+            print(f"TVMaze search results for {title}: {data}")
+            show = data[0]["show"]
+            normalized_result_title = self.normalize_title(show.get("name", ""))
+            if normalized_result_title == norm_title:
+                genres_list = show.get("genres", [])
+                if not isinstance(genres_list, list):
+                    genres_list = [genres_list]
+                self.cache[norm_title] = genres_list
+                return genres_list
+        self.cache[norm_title] = None
+        return None
+
 class MetadataAgent:
     def __init__(self, logger, output_bots, lock):
         self.musicbrainz_client = MusicBrainzClient()
         self.spotify_client = SpotifyClient()
         self.omdb_client = OMDBClient(os.getenv("OMDB_APIKEY", ""))
+        self.tmdb_client = TMDBClient(os.getenv("TMDB_APIKEY", ""))
+        self.tvmaze_client = TVMazeClient()
         self.srrdb_feed_url = "https://www.srrdb.com/feed/srrs"
         self.srrdb_api_url = "https://api.srrdb.com/v1/details/"
         self.logger = logger
         self.output_bots = output_bots
         self.lock = lock
+
+        with sqlite3.connect(os.getenv("PRE_DB_FILE"), check_same_thread=False) as conn:
+            self.conn = conn
+            self.conn.row_factory = sqlite3.Row
 
     def determine_genre(self, parsed_release):
         try:
@@ -1048,12 +1255,15 @@ class MetadataAgent:
                     genres = self.musicbrainz_client.get_genres(artist, title)
                 # [PRE] [FLAC] VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD 
                 # {'release': 'VA-Hip_Hop_Classics_Volume_Three-CD-FLAC-1997-THEVOiD', 'title': 'Various', 'title_extra': 'Hip Hop Classics Volume Three', 'group': 'THEVOiD', 'year': 1997, 'date': None, 'season': None, 'episode': None, 'disc': None, 'flags': None, 'source': 'CD', 'format': 'FLAC', 'resolution': None, 'audio': None, 'device': None, 'os': None, 'version': None, 'language': None, 'country': None, 'type': 'Music'}
-                elif not artist:
+                else:
                     genres = self.musicbrainz_client.get_genres(title, title_extra)
-                if not genres:
+                if not genres and artist != "Various" and title != "Various":
                     genres = self.spotify_client.get_genres(artist or title)
-                    #print(self.spotify_client.get_genres(artist or title))
                 if genres:
+                    if isinstance(genres, str):
+                        genres = [g.strip() for g in genres.split(",")]
+                    elif not isinstance(genres, list):
+                        genres = list(genres)
                     genres = [genre.lower().replace(' & ', '&').replace(' and ', '&').replace(' ', '.') for genre in genres]
                     return genres
             elif parsed_release["type"] in ["TV", "Movie"]:
@@ -1061,10 +1271,46 @@ class MetadataAgent:
                 title_extra = parsed_release.get("title_extra")
                 country = parsed_release.get("country")
                 year = parsed_release.get("year")
+                language = ""
+                # Extract and process language information:
+                # 1. If parsed_release["language"] is None, default to "en" (English)
+                lang_data = parsed_release.get("language")
+                if lang_data is None:
+                    language = "en"
+                # 2. If language is provided as a dict, it might contain multiple entries.
+                #    We ignore any key named "multi" and take the first valid language code.
+                #    If only "multi" is present, we default to "fr" (French) as a fallback.
+                elif isinstance(lang_data, dict):
+                    valid_lang_codes = [code for code in lang_data.keys() if code.lower() != "multi"]
+                    lang_code = valid_lang_codes[0] if valid_lang_codes else "fr"
+                    # Use Babel to convert the short language code (e.g. "en") into a full language tag (e.g. "en-US").
+                    # Note: This conversion uses Babel's locale data. If conversion fails, simply use the lang_code.
+                    #try:
+                    #    from babel import Locale
+                    #    language = Locale.parse(lang_code).to_language_tag()
+                    #except Exception:
+                    #    language = lang_code
+                # 3. Otherwise, if language is provided as a simple string, use it as-is.
+                else:
+                    language = lang_data
 
-                genres = self.omdb_client.get_genres(title, title_extra, country, year)
+                if parsed_release["type"] == "TV":
+                    # For TV shows, try OMDB first, then TMDB, then TVMaze.
+                    genres = self.omdb_client.get_genres(title, title_extra, country, year)
+                    if not genres and os.getenv("TMDB_APIKEY", ""):
+                        genres = self.tmdb_client.get_tv_genres(title, year, language=language, region=country)
+                    if not genres:
+                        genres = self.tvmaze_client.get_genres(title)
+                elif parsed_release["type"] == "Movie":
+                    # For movies, try OMDB first then TMDB.
+                    genres = self.omdb_client.get_genres(title, title_extra, country, year)
+                    if not genres and os.getenv("TMDB_APIKEY", ""):
+                        genres = self.tmdb_client.get_genres(title, year, language=language, region=country)
                 if genres:
-                    genres = genres.split(", ")
+                    if isinstance(genres, str):
+                        genres = [g.strip() for g in genres.split(",")]
+                    elif not isinstance(genres, list):
+                        genres = list(genres)
                     genres = [genre.lower().replace(" ", ".") for genre in genres]
                     return genres
         except requests.exceptions.HTTPError as e:
@@ -1076,19 +1322,21 @@ class MetadataAgent:
         return None
 
     def determine_info(self):
-        time.sleep(60)  # Wait for the OutputBots to start
-        self.conn = DB('pre.db').connection
-        while True:
+        getattr(self, "stop_event", threading.Event()).wait(timeout=60) # Wait for the OutputBots to start
+        while not getattr(self, "stop_event", threading.Event()).is_set():
             try:
                 feed = feedparser.parse(self.srrdb_feed_url)
-                for entry in feed.entries:
+
+                # Process items in reversed order (oldest first)
+                items = feed.entries[::-1]
+                for entry in items:
                     release_name = entry.title
                     # Check the release name against the pre table
                     cursor = self.conn.cursor()
                     cursor.execute("SELECT release, files, size FROM pre WHERE release=?", (release_name,))
                     row = cursor.fetchone()
                     cursor.close()
-                    if row and (row[1] is None or row[2] is None):
+                    if row and (row["files"] is None or row["size"] is None):
                         # Fetch details from SRRDB API
                         response = requests.get(f"{self.srrdb_api_url}{release_name}")
                         response.raise_for_status()
@@ -1105,9 +1353,20 @@ class MetadataAgent:
                             "size": total_size_mib
                         }
                         self.process_info_message(info_message)
+
+                # Get the pubDate of the feed
+                feed_pub_date = feed.feed.published_parsed
+                next_pull_time = datetime.datetime(*feed_pub_date[:6]) + datetime.timedelta(seconds=65)
+
+                # Calculate the sleep time until the next pull
+                sleep_time = (next_pull_time - datetime.datetime.now()).total_seconds()
+                if sleep_time > 0:
+                    getattr(self, "stop_event", threading.Event()).wait(timeout=sleep_time)
+                else:
+                    getattr(self, "stop_event", threading.Event()).wait(timeout=60)
             except Exception as e:
                 self.logger.error(f"Error in determine_info: {e}", exc_info=True)
-            time.sleep(60)  # Check every minute
+                getattr(self, "stop_event", threading.Event()).wait(timeout=60)  # Check every minute
 
     def process_info_message(self, message):
         result = {}
@@ -1119,7 +1378,6 @@ class MetadataAgent:
 
         try:
             self.lock.acquire()
-            print("Lock acquired by process_info_message")
             cursor = self.conn.cursor()
 
             if result["type"].lower() == "info":
@@ -1138,7 +1396,6 @@ class MetadataAgent:
         finally:
             cursor.close()
             self.lock.release()
-            print("Lock released by process_info_message")
 
     def broadcast(self, message_type, data, parsed_release=None):
         for bot in self.output_bots:
