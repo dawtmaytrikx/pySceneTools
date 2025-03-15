@@ -114,6 +114,7 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         self.nickserv_command = nickserv_command
 
         if self.ssl_enabled:
+            ssl.wrap_socket = ssl.SSLContext().wrap_socket
             factory = irc.connection.Factory(wrapper=ssl.wrap_socket)
         else:
             factory = irc.connection.Factory()
@@ -1326,6 +1327,10 @@ class MetadataAgent:
         while not getattr(self, "stop_event", threading.Event()).is_set():
             try:
                 feed = feedparser.parse(self.srrdb_feed_url)
+                if feed.bozo:
+                    print(f"Feed bozo exception: {feed.bozo_exception}")
+                    if hasattr(feed.bozo_exception, 'getcode'):
+                        raise requests.exceptions.HTTPError(f"HTTP error {feed.bozo_exception.getcode()} occurred while fetching feed: {self.srrdb_feed_url}")
 
                 # Process items in reversed order (oldest first)
                 items = feed.entries[::-1]
@@ -1346,6 +1351,9 @@ class MetadataAgent:
                         total_size = sum(f["size"] for f in files if not f["name"].lower().endswith((".nfo", ".sfv", ".m3u")) and not any(folder in f["name"].lower() for folder in ["subs/", "proof/", "sample/"]))
                         total_size_mib = round(total_size / (1024 * 1024))
 
+                        if total_files == 0 or total_size_mib == 0:
+                            continue
+
                         info_message = {
                             "type": "INFO",
                             "release": release_name,
@@ -1364,6 +1372,8 @@ class MetadataAgent:
                     getattr(self, "stop_event", threading.Event()).wait(timeout=sleep_time)
                 else:
                     getattr(self, "stop_event", threading.Event()).wait(timeout=60)
+            except requests.exceptions.HTTPError as e:
+                self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
             except Exception as e:
                 self.logger.error(f"Error in determine_info: {e}", exc_info=True)
                 getattr(self, "stop_event", threading.Event()).wait(timeout=60)  # Check every minute
