@@ -1,4 +1,4 @@
-servers:
+input_servers:
   - name: ZEnet
     host: irc.zenet.org
     port: 6697
@@ -16,7 +16,7 @@ servers:
         pre_regex_section: 1
         pre_regex_release: 2
         # no nuke examples
-        nuke_regex: '\(((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE)\)\s+\(([\w.\(\)-]+)\)\s+\(([\w.\(\)-]*)\)'
+        nuke_regex: '\(((?:(?:RE)|(?:S)|(?:OLD)?(?:(?:UN)|(?:MOD))?)?(?:NUKE)|(?:UN)?DELPRE)\)\s+\(([\w.\(\)-]+)\)\s+\(([\w.\(\)-]*)\)'
         nuke_regex_type: 1
         nuke_regex_release: 2
         nuke_regex_reason: 3
@@ -55,7 +55,7 @@ servers:
           - '<PREBot> [NUKE] Dom_and_Roland-Climax__Rebellion-WEB-2024-XTC [dupe.z0ne.2024-04-12] SanctityDenied'
           - '<PREBot> [MODNUKE] Slumberland.2022.FiNNiSH.1080p.WEB.H264-TOOSA [pred.incomplete_get.repack] LocalNet'
           - '<PREBot> [UNNUKE] Masterchef.S11E04.DANiSH.1080p.WEB.h264-STROMPEBUKSER [get.nfofix] LocalNet'
-        nuke_regex: '\[((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE)\]\s+([\w.\(\)-]*)\s+\[([\w.\(\)-]*)\]\s+([\w]*)'
+        nuke_regex: '\[((?:(?:RE)|(?:S)|(?:OLD)?(?:(?:UN)|(?:MOD))?)?(?:NUKE)|(?:UN)?DELPRE)\]\s+([\w.\(\)-]*)\s+\[([\w.\(\)-]*)\]\s+([\w]*)'
         nuke_regex_type: 1
         nuke_regex_release: 2
         nuke_regex_reason: 3
@@ -82,7 +82,7 @@ servers:
           - '<PR3> NUKE: Dom_and_Roland-Climax__Rebellion-WEB-2024-XTC [dupe.z0ne.2024-04-12] [SanctityDenied]'
           - '<PR3> UNNUKE: See.S03E01.1080p.REPACK.BluRay.x264-TABULARiA [get.dirfix] [LocalNet]'
           # no modnuke examples
-        nuke_regex: '((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE):\s+([\w.\(\)-]*)\s+\[([\w.\(\)-]*)\]\s+\[([\w]*)\]'
+        nuke_regex: '((?:(?:RE)|(?:S)|(?:OLD)?(?:(?:UN)|(?:MOD))?)?(?:NUKE)|(?:UN)?DELPRE):\s+([\w.\(\)-]*)\s+\[([\w.\(\)-]*)\]\s+\[([\w]*)\]'
         nuke_regex_type: 1
         nuke_regex_release: 2
         nuke_regex_reason: 3
@@ -94,7 +94,7 @@ servers:
           - '<PR3> NUKE: Dom_and_Roland-Climax__Rebellion-WEB-2024-XTC [dupe.z0ne.2024-04-12] [SanctityDenied]'
           - '<PR3> UNNUKE: Real_Tree-Whatever_Makes_Being_Together_Feel_Good-REPACK-WEB-2018-SDR [nfofix.out] [LocalNet]'
           # no modnuke examples
-        nuke_regex: '((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE):\s+([\w.\(\)-]*)\s+\[([\w.\(\)-]*)\]\s+\[([\w]*)\]'
+        nuke_regex: '((?:(?:RE)|(?:S)|(?:OLD)?(?:(?:UN)|(?:MOD))?)?(?:NUKE)|(?:UN)?DELPRE):\s+([\w.\(\)-]*)\s+\[([\w.\(\)-]*)\]\s+\[([\w]*)\]'
         nuke_regex_type: 1
         nuke_regex_release: 2
         nuke_regex_reason: 3
@@ -135,7 +135,7 @@ servers:
           # modnukes are just posted as nukes as of 2025-02-01:
           # <pre> nuke | Welkom.Thuis.S01E12.FLEMISH.1080p.WEB.H264-MERCATOR (grp.req) by LocalNet
           # <pre> nuke | Welkom.Thuis.S01E12.FLEMISH.1080p.WEB.H264-MERCATOR (grp.req_get.repack) by LocalNet
-        nuke_regex: '((?:(?:(?:un)(?:del)?)|(?:re)|(?:s)|(?:old)|(?:mod))?nuke)\s+\|\s+([\w.\(\)-]*)\s+\(([\w.\(\)-]*)\)\s+by\s+([\w]*)'
+        nuke_regex: '((?:(?:re)|(?:s)|(?:old)?(?:(?:un)|(?:mod))?)?(?:nuke)|(?:un)?delpre)\s+\|\s+([\w.\(\)-]*)\s+\(([\w.\(\)-]*)\)\s+by\s+([\w]*)'
         nuke_regex_type: 1
         nuke_regex_release: 2
         nuke_regex_reason: 3
@@ -145,7 +145,7 @@ servers:
       - name: '#pre.spam'
         info_examples:
           - '<pre> info | The.Duel.2023.1080p.BluRay.x264-JustWatch - 93 F & 13177 MB'
-          # no genre examples
+          - '<pre> genre | The.Witcher.Sirens.of.the.Deep.2025.MULTi.1080p.WEB.x264-AMB3R - Animation/Action/Adventure'
         info_regex: '((?:genre)|(?:info))\s+\|\s+([\w.\(\)-]+)\s+-\s+(?:(?:(\d+)\s+F\s+&\s+([\d.]+)\s+MB)|(?:([^\d][\w-]*)))'
         info_regex_type: 1
         info_regex_release: 2
@@ -173,10 +173,81 @@ servers:
         nuke_examples:
           - '<PreBot> [UNNUKE]  Masterchef.S11E04.DANiSH.1080p.WEB.h264-STROMPEBUKSER  [get.nfofix]  [LocalNet]'
           # no nuke and modnuke examples
-        nuke_regex: '\[((?:(?:(?:UN)(?:DEL)?)|(?:RE)|(?:S)|(?:OLD)|(?:MOD))?NUKE)\]\s+([\w.\(\)-]*)\s+\[([\w.\(\)-]*)\]\s+\[([\w]*)\]'
+        nuke_regex: '\[((?:(?:RE)|(?:S)|(?:OLD)?(?:(?:UN)|(?:MOD))?)?(?:NUKE)|(?:UN)?DELPRE)\]\s+([\w.\(\)-]*)\s+\[([\w.\(\)-]*)\]\s+\[([\w]*)\]'
         nuke_regex_type: 1
         nuke_regex_release: 2
         nuke_regex_reason: 3
         nuke_regex_nukenet: 4
         author: PreBot
         password: 
+  - name: ngp.re
+    host: irc.ngp.re
+    port: 6697
+    ssl_enabled: true
+    nickname: guest67
+    realname: My Name
+    password:
+    nickserv: nickserv
+    nickserv_command: identify 123abc
+    channels:
+      - name: '#ngpre'
+        pre_examples:
+          - '<|-NGPRE-|> .::: PRE ::: WEB-HD-X264 ::: Bulletproof.1996.POLISH.720p.WEB.H264-A4O :::.'
+        pre_regex: '\.:::\s+PRE\s+:::\s+([\w-]+)\s+:::\s+([\w.\(\)-]*)\s+:::\.'
+        pre_regex_section: 1
+        pre_regex_release: 2
+        author: '|-NGPRE-|'
+        password:
+      - name: '#ngpre.nuke'
+        nuke_examples:
+          - '<|-NGPRE-|> .:::[NUKE]::: Queer.Planet.2024.1080p.WEB.H264-RVKD ::: [dupe.CBFM.2023-12-03] ::: [LocalNet] :::.'
+          # no modnuke example
+          - '<|-NGPRE-|> .:::[UNNUKE]:::  Bioweapon_-_Let_The_Beat_(Edit)-SINGE-WEB-2025-UTNG::: [get.dirfix] ::: [ZoNeNET] :::.'
+          - '<|-NGPRE-|> .:::[DELPRE]::: mkv_sample_info_-_AVC_-_1280_x_720_px_-_25.000_FPS_-_GermanEnglish_audio_-_1_min_0_s ::: spam  ::: ZoNeNET :::.'
+        nuke_regex: '\.:::\s*\[((?:(?:RE)|(?:S)|(?:OLD)?(?:(?:UN)|(?:MOD))?)?(?:NUKE)|(?:UN)?DELPRE)\]\s*:::\s*([\w.\(\)-]+)\s*:::\s*\[?([\w.\(\)-]*)\]?\s*:::\s*\[?([\w.\(\)-]*)\]?\s*:::\.'
+        nuke_regex_type: 1
+        nuke_regex_release: 2
+        nuke_regex_reason: 3
+        nuke_regex_nukenet: 4
+        author: '|-NGPRE-|'
+        password:
+      - name: '#ngpre.spam'
+        info_examples:
+          - '<|-NGPRE-|> [INFO] FOR Loves.Fast.Lane.2023.1080p.WEB.H264-RVKD with 14F 5107MB added.'
+          - '<|-NGPRE-|> [GENRE] FOR Bulletproof.1996.POLISH.1080p.WEB.H264-A4O with Action/Comedy/Crime added.'
+        info_regex: '\[((?:GENRE)|(?:INFO))\]\s+FOR\s+([\w.\(\)-]+)\s+with\s+(?:(?:(\d+)F\s+([\d.]+)MB)|(?:([^\d][\w\/&-]*)))\s+added\.'
+        info_regex_type: 1
+        info_regex_release: 2
+        info_regex_size: 4
+        info_regex_files: 3
+        info_regex_genre: 5
+        addold_examples:
+          - '<|-NGPRE-|> [OLDADD] Lonely.Hearts.Killers.German.2006.AC3.BDRip.x264.iNTERNAL-VideoStar in X264 Time: 1396729479 Files: 0 Size: 0 Genre: None added.'
+        addold_regex: '\[(OLDADD)\]\s+([\w.\(\)-]+)\s+in\s+([\w-]+)\s+Time:\s+(\d+)\s+Files:\s+(\d+)\s+Size:\s+([\d.]+)\s+Genre:\s+([\w.\/-]+)\s+added\.'
+        addold_regex_type: 1
+        addold_regex_release: 2
+        addold_regex_section: 3
+        addold_regex_timestamp: 4
+        addold_regex_files: 5
+        addold_regex_size: 6
+        addold_regex_genre: 7
+        author: '|-NGPRE-|'
+        password:
+
+#output_servers:
+#  - name: "output_server_1"
+#    host: "irc.outputserver1.com"
+#    port: 6667
+#    ssl_enabled: true
+#    nickname: "outputbot1"
+#    realname: "Output Bot 1"
+#    channels:
+#      - name: "#json-pre"
+#        type: pre
+#      - name: "#json-info"
+#        type: info
+#      - name: "#json-nuke"
+#        type: nuke
+#    nickserv: "NickServ"
+#    nickserv_command: "IDENTIFY password"
+#    password: "outputpassword1"

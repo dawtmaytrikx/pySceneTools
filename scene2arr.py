@@ -4,7 +4,6 @@ import argparse
 import datetime
 from dotenv import load_dotenv
 import logging
-import random
 import requests
 import sys
 import time
@@ -89,14 +88,21 @@ def start_argparse():
     return args
 
 
-def create_scene2arr_db(dbname):
+def create_scene2arr_db(dbname, user_version=2):
     # set up the database
-    from classes import DB  # Local import to avoid circular import issue
     if not os.path.exists(dbname):
         with open(dbname, "w"):
             pass
 
     db = DB(dbname)
+
+    # Check the current user_version
+    db.cursor.execute("PRAGMA user_version")
+    current_version = db.cursor.fetchone()[0]
+
+    if current_version < user_version:
+        # Run the update script if the version is below the required version
+        subprocess.run(["python3", "run_post_update.py"])
 
     db.cursor.execute(
         """CREATE TABLE IF NOT EXISTS scenegroups (
@@ -118,23 +124,32 @@ def create_scene2arr_db(dbname):
         );"""
     )
 
+    db.cursor.execute(f"PRAGMA user_version = {user_version}")
     db.connection.commit()
 
     return db
 
-def create_pre_db(dbname):
+def create_pre_db(dbname, user_version=3):
     # set up the database
-    from classes import DB  # Local import to avoid circular import issue
     if not os.path.exists(dbname):
         with open(dbname, "w"):
             pass
 
     db = DB(dbname)
 
+    # Check the current user_version
+    db.cursor.execute("PRAGMA user_version")
+    current_version = db.cursor.fetchone()[0]
+
+    if current_version < user_version:
+        # Run the update script if the version is below the required version
+        subprocess.run(["python3", "run_post_update.py"])
+
     db.cursor.execute(
         """CREATE TABLE IF NOT EXISTS pre (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            release TEXT,
+            release TEXT UNIQUE,
+            type TEXT,
             section TEXT,
             size INTEGER,
             files INTEGER,
@@ -156,7 +171,10 @@ def create_pre_db(dbname):
         )"""
     )
 
+    db.cursor.execute(f"PRAGMA user_version = {user_version}")
     db.connection.commit()
+
+    return db
 
 
 def init_pvrs(logger):
@@ -403,6 +421,9 @@ def update_pvr(args, logger, db, pvr, newrestriction, release=None):
 
     return pvr
 
+# Add a global stop event
+stop_event = threading.Event()
+
 def main(args=None):
     load_dotenv()
     if args is None:
@@ -418,7 +439,6 @@ def main(args=None):
         console_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
         logger.addHandler(console_handler)
 
-     
     if args["xrel"] or args["add"] or args["remove"]:
         scene2arr_db = create_scene2arr_db(SCENE2ARR_DB_FILE)
 
@@ -438,10 +458,39 @@ def main(args=None):
         except Exception as e:
             logger.error(f"{ERROR} loading {IRC_CONFIG_FILE}:", e)
             sys.exit(1)
-        IRCBot.lock = threading.Lock()
+
+        shared_lock = threading.Lock()
         threads = []
         bots = []
-        for server in cfg["servers"]:
+
+        output_bots = [OutputBot(
+            args,
+            logger,
+            name=output_server["name"],
+            host=output_server["host"],
+            port=output_server.get("port", 6667),
+            ssl_enabled=output_server.get("ssl_enabled", True),
+            nickname=output_server.get("nickname", f"humanperson{random.randint(100, 999)}"),
+            realname=output_server.get("realname", None),
+            ircchannels=output_server["channels"],
+            nickserv=output_server.get("nickserv", None),
+            nickserv_command=output_server.get("nickserv_command", None),
+            password=output_server.get("password", None)
+        ) for output_server in cfg.get("output_servers", [])]
+
+        for bot in output_bots:
+            # Pass stop_event to bot so it can check for shutdown
+            bot.stop_event = stop_event
+            t = threading.Thread(target=bot.start)
+            threads.append(t)
+            bots.append(bot)
+
+        metadata_agent = MetadataAgent(logger, output_bots, shared_lock)
+        # Pass stop_event to metadata_agent as well if needed
+        metadata_agent.stop_event = stop_event
+        threads.append(threading.Thread(target=metadata_agent.determine_info, daemon=True))
+
+        for server in cfg["input_servers"]:
             name = server["name"]
             host = server["host"]
             nickname = server.get("nickname") or f"humanperson{random.randint(100, 999)}"
@@ -452,7 +501,7 @@ def main(args=None):
             nickserv = server.get("nickserv", None)
             nickserv_command = server.get("nickserv_command", None)
             channels = server["channels"]
-            bot = IRCBot(
+            bot = InputBot(
                 args,
                 logger,
                 name,
@@ -464,19 +513,24 @@ def main(args=None):
                 channels,
                 nickserv,
                 nickserv_command,
+                output_bots,
+                metadata_agent,
+                shared_lock,
                 password=password,
             )
+            bot.stop_event = stop_event
             t = threading.Thread(target=bot.start)
             threads.append(t)
             bots.append(bot)
+
         for t in threads:
-            #t.daemon = True
             t.start()
         try:
-            while True:
+            while not stop_event.is_set():
                 time.sleep(1)
         except KeyboardInterrupt:
             logger.info(f"{INFO} Keyboard interrupt detected, exiting...")
+            stop_event.set()  # Signal all threads to stop
             for bot in bots:
                 try:
                     bot.disconnect()

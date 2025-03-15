@@ -1,27 +1,37 @@
 import datetime
-import sqlite3
+import logging
 import os
+import re
+import sqlite3
+
+# Configure logger
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def get_db_version(db_path):
+    logging.info(f"Getting database version for {db_path}")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("PRAGMA user_version")
     version = cursor.fetchone()[0]
     conn.close()
+    logging.info(f"Database version for {db_path} is {version}")
     return version
 
 def set_db_version(db_path, version):
+    logging.info(f"Setting database version for {db_path} to {version}")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute(f"PRAGMA user_version = {version}")
     conn.commit()
     conn.close()
+    logging.info(f"Database version for {db_path} set to {version}")
 
-def convert_scene2arr_db(dbname):
+def convert_scene2arr_db_v2(dbname):
+    logging.info(f"Converting {dbname} to version 2")
     conn = sqlite3.connect(dbname)
     cursor = conn.cursor()
 
-    # Create new tables with the updated schema
+    logging.info("Creating new tables with the updated schema")
     cursor.execute(
         """CREATE TABLE IF NOT EXISTS scenegroups_new (
         id INTEGER PRIMARY KEY,
@@ -42,7 +52,7 @@ def convert_scene2arr_db(dbname):
         );"""
     )
 
-    # Copy data from old tables to new tables, converting date/time format
+    logging.info("Copying data from old tables to new tables, converting date/time format")
     cursor.execute("SELECT id, groupname, release, pvr, releasedate, date FROM scenegroups")
     rows = cursor.fetchall()
     for row in rows:
@@ -63,11 +73,11 @@ def convert_scene2arr_db(dbname):
             (row[0], row[1], row[2], date)
         )
 
-    # Drop old tables
+    logging.info("Dropping old tables")
     cursor.execute("DROP TABLE scenegroups")
     cursor.execute("DROP TABLE latest")
 
-    # Rename new tables to original names
+    logging.info("Renaming new tables to original names")
     cursor.execute("ALTER TABLE scenegroups_new RENAME TO scenegroups")
     cursor.execute("ALTER TABLE latest_new RENAME TO latest")
 
@@ -75,12 +85,14 @@ def convert_scene2arr_db(dbname):
     cursor.execute("VACUUM")
     conn.close()
     set_db_version(dbname, 2)  # Set the new version after conversion
+    logging.info(f"Conversion of {dbname} to version 2 completed")
 
-def convert_pre_db(dbname):
+def convert_pre_db_v2(dbname):
+    logging.info(f"Converting {dbname} to version 2")
     conn = sqlite3.connect(dbname)
     cursor = conn.cursor()
 
-    # Create new tables with the updated schema
+    logging.info("Creating new tables with the updated schema")
     cursor.execute(
         """CREATE TABLE IF NOT EXISTS pre_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,7 +118,7 @@ def convert_pre_db(dbname):
         )"""
     )
 
-    # Copy data from old tables to new tables, converting date/time format
+    logging.info("Copying data from old tables to new tables, converting date/time format")
     cursor.execute("SELECT id, release, category, size, files, genre, source, time FROM pre")
     rows = cursor.fetchall()
     for row in rows:
@@ -128,11 +140,11 @@ def convert_pre_db(dbname):
             (row[0], row[1], row[2], row[3], row[4], row[5], time)
         )
 
-    # Drop old tables
+    logging.info("Dropping old tables")
     cursor.execute("DROP TABLE pre")
     cursor.execute("DROP TABLE nuke")
 
-    # Rename new tables to original names
+    logging.info("Renaming new tables to original names")
     cursor.execute("ALTER TABLE pre_new RENAME TO pre")
     cursor.execute("ALTER TABLE nuke_new RENAME TO nuke")
 
@@ -140,12 +152,14 @@ def convert_pre_db(dbname):
     cursor.execute("VACUUM")
     conn.close()
     set_db_version(dbname, 2)  # Set the new version after conversion
+    logging.info(f"Conversion of {dbname} to version 2 completed")
 
-def convert_scenerename_db(dbname):
+def convert_scenerename_db_v2(dbname):
+    logging.info(f"Converting {dbname} to version 2")
     conn = sqlite3.connect(dbname)
     cursor = conn.cursor()
 
-    # Create new tables with the updated schema
+    logging.info("Creating new tables with the updated schema")
     cursor.execute(
         """CREATE TABLE IF NOT EXISTS srrdb_new (
             relname TEXT PRIMARY KEY,
@@ -179,7 +193,7 @@ def convert_scenerename_db(dbname):
         );"""
     )
 
-    # Copy data from old tables to new tables, converting date/time format
+    logging.info("Copying data from old tables to new tables, converting date/time format")
     cursor.execute("SELECT relname, origname, crccalc, crcweb, status, tag, date FROM srrdb")
     rows = cursor.fetchall()
     for row in rows:
@@ -211,12 +225,12 @@ def convert_scenerename_db(dbname):
             (row[0], start, end, row[3], row[4])
         )
 
-    # Drop old tables
+    logging.info("Dropping old tables")
     cursor.execute("DROP TABLE srrdb")
     cursor.execute("DROP TABLE errors")
     cursor.execute("DROP TABLE lastrun")
 
-    # Rename new tables to original names
+    logging.info("Renaming new tables to original names")
     cursor.execute("ALTER TABLE srrdb_new RENAME TO srrdb")
     cursor.execute("ALTER TABLE errors_new RENAME TO errors")
     cursor.execute("ALTER TABLE lastrun_new RENAME TO lastrun")
@@ -225,17 +239,93 @@ def convert_scenerename_db(dbname):
     cursor.execute("VACUUM")
     conn.close()
     set_db_version(dbname, 2)  # Set the new version after conversion
+    logging.info(f"Conversion of {dbname} to version 2 completed")
+
+def convert_pre_db_v3(dbname):
+    logging.info(f"Converting {dbname} to version 3")
+    conn = sqlite3.connect(dbname)
+    cursor = conn.cursor()
+
+    logging.info("Creating new table with the desired schema")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pre_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            release TEXT UNIQUE,
+            type TEXT,
+            section TEXT,
+            size INTEGER,
+            files INTEGER,
+            genre TEXT,
+            source TEXT,
+            timestamp INTEGER
+        )
+    """)
+
+    logging.info("Copying data from old table to new table")
+    cursor.execute("""
+        INSERT OR IGNORE INTO pre_new (id, release, type, section, size, files, genre, source, timestamp)
+        SELECT id, release, 'PRE', section, size, files, genre, source, timestamp
+        FROM pre
+    """)
+
+    logging.info("Dropping old table")
+    cursor.execute("DROP TABLE pre")
+
+    logging.info("Renaming new table to original name")
+    cursor.execute("ALTER TABLE pre_new RENAME TO pre")
+
+    logging.info("Removing bogus nukes from predataba.se if an equivalent modnuke from another source is present")
+    cursor.execute("""
+        DELETE FROM nuke
+        WHERE source = 'irc.predataba.se/#pre'
+        AND EXISTS (
+            SELECT 1 FROM nuke AS modnuke
+            WHERE modnuke.release = nuke.release
+            AND modnuke.reason = nuke.reason
+            AND modnuke.nukenet = nuke.nukenet
+            AND modnuke.type = 'MODNUKE'
+            AND modnuke.source != 'irc.predataba.se/#pre'
+        )
+    """)
+
+    conn.commit()
+    cursor.execute("VACUUM")
+    conn.close()
+    set_db_version(dbname, 3)  # Set the new version after conversion
+    logging.info(f"Conversion of {dbname} to version 3 completed")
+
+def update_irc_yaml(yaml_file):
+    logging.info(f"Updating IRC YAML file: {yaml_file}")
+
+    with open(yaml_file, 'r') as file:
+        content = file.read()
+
+    # Replace 'servers:' key with 'input_servers:' only if it is a key (followed by a space or newline)
+    updated_content = re.sub(r'(?m)^(servers:)', r'input_servers:', content)
+
+    with open(yaml_file, 'w') as file:
+        file.write(updated_content)
+
+    logging.info(f"IRC YAML file {yaml_file} updated")
 
 # Convert databases if they exist and haven't been converted yet
 if os.path.exists('./scene2arr.db') and get_db_version('./scene2arr.db') < 2:
-    convert_scene2arr_db('./scene2arr.db')
+    convert_scene2arr_db_v2('./scene2arr.db')
 
 if os.path.exists('./test/irc2arr.db') and get_db_version('./test/irc2arr.db') < 2:
-    convert_pre_db('./test/irc2arr.db')
+    convert_pre_db_v2('./test/irc2arr.db')
 
 if os.path.exists('./scenerename.db') and get_db_version('./scenerename.db') < 2:
-    convert_scenerename_db('./scenerename.db')
+    convert_scenerename_db_v2('./scenerename.db')
 
 # Rename the irc2arr.db to pre.db if it exists and hasn't been renamed yet
 if os.path.exists('./test/irc2arr.db'):
+    logging.info("Renaming './test/irc2arr.db' to './pre.db'")
     os.rename('./test/irc2arr.db', './pre.db')
+
+# Convert pre.db to version 3 if it exists and hasn't been converted yet
+if os.path.exists('./pre.db') and get_db_version('./pre.db') < 3:
+    convert_pre_db_v3('./pre.db')
+
+if os.path.exists('./pre.db'):
+    update_irc_yaml('./irc.yaml')
