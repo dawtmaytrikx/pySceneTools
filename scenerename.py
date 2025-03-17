@@ -699,7 +699,7 @@ if __name__ == "__main__":
 
     # clean error log
     db.cursor.execute(
-        "DELETE FROM errors WHERE timestamp < ?", (start - datetime.timedelta(days=2),)
+        "DELETE FROM errors WHERE timestamp < ?", (start - int(datetime.timedelta(days=2).total_seconds()),)
     )
     db.connection.commit()
 
