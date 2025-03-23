@@ -143,9 +143,9 @@ class IRCBot(irc.bot.SingleServerIRCBot):
         self.logger.warning(f"{c.server}: Disconnected from server.")
         # Let the start() loop handle reconnection
 
-    def disconnect(self, message="Goodbye, cruel world!"):
+    def disconnect(self, msg="Goodbye, cruel world!"):
         self.intentional_disconnect = True
-        super().disconnect(message)
+        super().disconnect(msg)
 
     def on_nicknameinuse(self, c, e):
         c.nick(c.get_nickname() + "_")
@@ -266,10 +266,10 @@ class InputBot(IRCBot):
         #except NameError:
         #    self.lock = threading.Lock()
 
-    def disconnect(self, message="Goodbye, cruel world!"):
+    def disconnect(self, msg="Goodbye, cruel world!"):
         if self.args["predb"]:
             self.conn.close()
-        super().disconnect(message)
+        super().disconnect(msg)
     
     def on_privmsg(self, c, e):
         self.handle_message(c, e)
