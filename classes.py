@@ -823,8 +823,14 @@ class OutputBot(IRCBot):
 
         message = json.dumps(filtered_data)
         for channel in channels:
-            self.connection.privmsg(channel, message)
-            self.logger.info(f"OutputBot {self.name} sent message to {channel}: {message}")
+            try:
+                self.connection.privmsg(channel, message)
+                self.logger.info(f"OutputBot {self.name} sent message to {channel}: {message}")
+            # TODO: Handle reconnections gracefully
+            #except irc.client.ServerNotConnectedError:
+            #    pass
+            except Exception as e:
+                self.logger.error(f"Error sending message to {channel}: {e}", exc_info=True)
 
 class MusicBrainzClient:
     def __init__(self):
