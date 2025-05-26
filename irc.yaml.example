@@ -184,7 +184,7 @@ input_servers:
     host: irc.ngp.re
     port: 6697
     ssl_enabled: true
-    nickname: guest67
+    nickname:
     realname: My Name
     password:
     nickserv: nickserv
