@@ -1257,8 +1257,8 @@ class MetadataAgent:
         genre = genre.lower()
         # Remove apostrophes and most special chars except & - and /, keep spaces for now
         genre = re.sub(r"[^\w\s&/-]", "", genre)
-        # Replace 'and', 'n' with &
-        genre = re.sub(r"\b(and|n)\b", "&", genre)
+        # Replace ' and ', " 'n' " with &
+        genre = re.sub(r"\sand\s|\s?[\s\']n[\s\']\s?", "&", genre)
         # Collapse multiple spaces
         genre = re.sub(r"\s+", " ", genre)
         # Remove leading/trailing spaces
