@@ -1239,8 +1239,8 @@ class MetadataAgent:
     def __init__(self, logger, output_bots, lock):
         self.musicbrainz_client = MusicBrainzClient()
         self.spotify_client = SpotifyClient()
-        self.omdb_client = OMDBClient(os.getenv("OMDB_APIKEY", ""))
-        self.tmdb_client = TMDBClient(os.getenv("TMDB_APIKEY", ""))
+        self.omdb_client = OMDBClient(os.getenv("OMDB_APIKEY", ""))  # TODO: just define the API key in the class, like with SpotifyClient()
+        self.tmdb_client = TMDBClient(os.getenv("TMDB_APIKEY", ""))  # dto.
         self.tvmaze_client = TVMazeClient()
         self.srrdb_feed_url = "https://www.srrdb.com/feed/srrs"
         self.srrdb_api_url = "https://api.srrdb.com/v1/details/"
@@ -1252,6 +1252,23 @@ class MetadataAgent:
             self.conn = conn
             self.conn.row_factory = sqlite3.Row
 
+    def normalize_genre(genre):
+        # Lowercase
+        genre = genre.lower()
+        # Remove apostrophes and most special chars except & - and /, keep spaces for now
+        genre = re.sub(r"[^\w\s&/-]", "", genre)
+        # Replace 'and', 'n' with &
+        genre = re.sub(r"\b(and|n)\b", "&", genre)
+        # Collapse multiple spaces
+        genre = re.sub(r"\s+", " ", genre)
+        # Remove leading/trailing spaces
+        genre = genre.strip()
+        # Replace spaces with dots
+        genre = genre.replace(" ", ".")
+        # Remove trailing dots
+        genre = re.sub(r"^.+|.+$", "", genre)
+        return genre
+                 
     def determine_genre(self, parsed_release):
         try:
             if parsed_release["type"] == "Music":
@@ -1271,7 +1288,7 @@ class MetadataAgent:
                         genres = [g.strip() for g in genres.split(",")]
                     elif not isinstance(genres, list):
                         genres = list(genres)
-                    genres = [genre.lower().replace(' & ', '&').replace(' and ', '&').replace(' ', '.') for genre in genres]
+                    genres = [normalize_genre(genre) for genre in genres]
                     return genres
             elif parsed_release["type"] in ["TV", "Movie"]:
                 title = parsed_release.get("title")
@@ -1313,12 +1330,12 @@ class MetadataAgent:
                     genres = self.omdb_client.get_genres(title, title_extra, country, year)
                     if not genres and os.getenv("TMDB_APIKEY", ""):
                         genres = self.tmdb_client.get_genres(title, year, language=language, region=country)
-                if genres:
+                if genres:  # TODO: Is duplicate with code above?
                     if isinstance(genres, str):
                         genres = [g.strip() for g in genres.split(",")]
                     elif not isinstance(genres, list):
                         genres = list(genres)
-                    genres = [genre.lower().replace(" ", ".") for genre in genres]
+                    genres = [normalize_genre(genre) for genre in genres]
                     return genres
         except requests.exceptions.HTTPError as e:
             self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
