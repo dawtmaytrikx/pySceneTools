@@ -1270,6 +1270,8 @@ class MetadataAgent:
         return genre
 
     def clean_genres(self, genres):
+        if not genres:
+            return None
         if isinstance(genres, str):
             genres = [g.strip() for g in genres.split(",")]
         elif not isinstance(genres, list):
