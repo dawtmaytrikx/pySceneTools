@@ -1266,8 +1266,19 @@ class MetadataAgent:
         # Replace spaces with dots
         genre = genre.replace(" ", ".")
         # Remove trailing dots
-        genre = re.sub(r"^.+|.+$", "", genre)
-        return genre
+        genre = re.sub(r"^\.+|\.+$", "", genre)
+        if genres:
+            if isinstance(genres, str):
+                genres = [g.strip() for g in genres.split(",")]
+            elif not isinstance(genres, list):
+                genres = list(genres)
+            genres = [self.normalize_genre(genre) for genre in genres]
+            # Add this validation:
+            genres = [g for g in genres if g]  # Remove any empty strings
+            if genres:  # Only return if there are non-empty genres
+                return genres
+        return None
+
                  
     def determine_genre(self, parsed_release):
         try:
@@ -1335,7 +1346,7 @@ class MetadataAgent:
                         genres = [g.strip() for g in genres.split(",")]
                     elif not isinstance(genres, list):
                         genres = list(genres)
-                    genres = [normalize_genre(genre) for genre in genres]
+                    genres = [self.normalize_genre(genre) for genre in genres]
                     return genres
         except requests.exceptions.HTTPError as e:
             self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
