@@ -1267,18 +1267,16 @@ class MetadataAgent:
         genre = genre.replace(" ", ".")
         # Remove trailing dots
         genre = re.sub(r"^\.+|\.+$", "", genre)
-        if genres:
-            if isinstance(genres, str):
-                genres = [g.strip() for g in genres.split(",")]
-            elif not isinstance(genres, list):
-                genres = list(genres)
-            genres = [self.normalize_genre(genre) for genre in genres]
-            # Add this validation:
-            genres = [g for g in genres if g]  # Remove any empty strings
-            if genres:  # Only return if there are non-empty genres
-                return genres
-        return None
+        return genre
 
+    def clean_genres(self, genres):
+        if isinstance(genres, str):
+            genres = [g.strip() for g in genres.split(",")]
+        elif not isinstance(genres, list):
+            genres = list(genres)
+        genres = [self.normalize_genre(g) for g in genres]
+        genres = [g for g in genres if g]  # Remove empty strings
+        return genres if genres else None
                  
     def determine_genre(self, parsed_release):
         try:
@@ -1294,13 +1292,10 @@ class MetadataAgent:
                     genres = self.musicbrainz_client.get_genres(title, title_extra)
                 if not genres and artist != "Various" and title != "Various":
                     genres = self.spotify_client.get_genres(artist or title)
+                genres = self.clean_genres(genres)
                 if genres:
-                    if isinstance(genres, str):
-                        genres = [g.strip() for g in genres.split(",")]
-                    elif not isinstance(genres, list):
-                        genres = list(genres)
-                    genres = [self.normalize_genre(genre) for genre in genres]
                     return genres
+                    
             elif parsed_release["type"] in ["TV", "Movie"]:
                 title = parsed_release.get("title")
                 title_extra = parsed_release.get("title_extra")
@@ -1341,12 +1336,8 @@ class MetadataAgent:
                     genres = self.omdb_client.get_genres(title, title_extra, country, year)
                     if not genres and os.getenv("TMDB_APIKEY", ""):
                         genres = self.tmdb_client.get_genres(title, year, language=language, region=country)
-                if genres:  # TODO: Is duplicate with code above?
-                    if isinstance(genres, str):
-                        genres = [g.strip() for g in genres.split(",")]
-                    elif not isinstance(genres, list):
-                        genres = list(genres)
-                    genres = [self.normalize_genre(genre) for genre in genres]
+                genres = self.clean_genres(genres)
+                if genres:
                     return genres
         except requests.exceptions.HTTPError as e:
             self.logger.error(f"HTTP error occurred: {e}", exc_info=True)
