@@ -1252,7 +1252,7 @@ class MetadataAgent:
             self.conn = conn
             self.conn.row_factory = sqlite3.Row
 
-    def normalize_genre(genre):
+    def normalize_genre(self, genre):
         # Lowercase
         genre = genre.lower()
         # Remove apostrophes and most special chars except & - and /, keep spaces for now
@@ -1288,7 +1288,7 @@ class MetadataAgent:
                         genres = [g.strip() for g in genres.split(",")]
                     elif not isinstance(genres, list):
                         genres = list(genres)
-                    genres = [normalize_genre(genre) for genre in genres]
+                    genres = [self.normalize_genre(genre) for genre in genres]
                     return genres
             elif parsed_release["type"] in ["TV", "Movie"]:
                 title = parsed_release.get("title")
