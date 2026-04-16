@@ -463,32 +463,33 @@ def main(args=None):
         threads = []
         bots = []
 
-        output_bots = [OutputBot(
-            args,
-            logger,
-            name=output_server["name"],
-            host=output_server["host"],
-            port=output_server.get("port", 6667),
-            ssl_enabled=output_server.get("ssl_enabled", True),
-            nickname=output_server.get("nickname", f"humanperson{random.randint(100, 999)}"),
-            realname=output_server.get("realname", None),
-            ircchannels=output_server["channels"],
-            nickserv=output_server.get("nickserv", None),
-            nickserv_command=output_server.get("nickserv_command", None),
-            password=output_server.get("password", None)
-        ) for output_server in cfg.get("output_servers", [])]
+        if args["predb"]:
+            output_bots = [OutputBot(
+                args,
+                logger,
+                name=output_server["name"],
+                host=output_server["host"],
+                port=output_server.get("port", 6667),
+                ssl_enabled=output_server.get("ssl_enabled", True),
+                nickname=output_server.get("nickname", f"humanperson{random.randint(100, 999)}"),
+                realname=output_server.get("realname", None),
+                ircchannels=output_server["channels"],
+                nickserv=output_server.get("nickserv", None),
+                nickserv_command=output_server.get("nickserv_command", None),
+                password=output_server.get("password", None)
+            ) for output_server in cfg.get("output_servers", [])]
 
-        for bot in output_bots:
-            # Pass stop_event to bot so it can check for shutdown
-            bot.stop_event = stop_event
-            t = threading.Thread(target=bot.start)
-            threads.append(t)
-            bots.append(bot)
+            for bot in output_bots:
+                # Pass stop_event to bot so it can check for shutdown
+                bot.stop_event = stop_event
+                t = threading.Thread(target=bot.start)
+                threads.append(t)
+                bots.append(bot)
 
-        metadata_agent = MetadataAgent(logger, output_bots, shared_lock)
-        # Pass stop_event to metadata_agent as well if needed
-        metadata_agent.stop_event = stop_event
-        threads.append(threading.Thread(target=metadata_agent.determine_info, daemon=True))
+            metadata_agent = MetadataAgent(logger, output_bots, shared_lock)
+            # Pass stop_event to metadata_agent as well if needed
+            metadata_agent.stop_event = stop_event
+            threads.append(threading.Thread(target=metadata_agent.determine_info, daemon=True))
 
         for server in cfg["input_servers"]:
             name = server["name"]
