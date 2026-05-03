@@ -26,8 +26,8 @@ input_servers:
       - name: '#pre.spam'
         info_examples:
           - '<TheAnnouncer> (INFO) (Chicago.P.D.2014.S04E05.POLISH.1080p.WEB.H264-A4O) (36 Files) (3353 MB)'
-          # no genre examples
-        info_regex: '\(((?:GENRE)|(?:INFO))\)\s+\(([\w.\(\)-]+)\)\s+(?:(?:\((\d+)\s+Files\)\s+\(([\d.]+)\s+MB\))|(?:\(([^\d][\w-]*)\)))'
+          - '<TheAnnouncer> (GENRE) (VA-Tech_House_Sessions_Vol._06-LWTECHHS06-WEB-2026-COS) (rally/house/house)'
+        info_regex: '\(((?:GENRE)|(?:INFO))\)\s+\(([\w.\(\)-]+)\)\s+(?:(?:\((\d+)\s+Files\)\s+\(([\d.]+)\s+MB\))|(?:\(([^\d][\w/.\'&-]*)\)))'
         info_regex_type: 1
         info_regex_release: 2
         info_regex_size: 4
@@ -105,7 +105,7 @@ input_servers:
         info_examples:
           - '<PR3> INFO: The.Duel.2023.1080p.BluRay.x264-JustWatch [93F 13177MB]'
           # no genre examples
-        info_regex: '((?:GENRE)|(?:INFO)):\s+([\w.\(\)-]+)\s+(?:(?:\[(\d+)F\s+([\d.]+)MB\])|(?:\[([^\d][\w-]*)\]))'
+        info_regex: '((?:GENRE)|(?:INFO)):\s+([\w.\(\)-]+)\s+(?:(?:\[(\d+)F\s+([\d.]+)MB\])|(?:\[([^\d][\w/.\'&-]*)\]))'
         info_regex_type: 1
         info_regex_release: 2
         info_regex_size: 4
@@ -146,7 +146,7 @@ input_servers:
         info_examples:
           - '<pre> info | The.Duel.2023.1080p.BluRay.x264-JustWatch - 93 F & 13177 MB'
           - '<pre> genre | The.Witcher.Sirens.of.the.Deep.2025.MULTi.1080p.WEB.x264-AMB3R - Animation/Action/Adventure'
-        info_regex: '((?:genre)|(?:info))\s+\|\s+([\w.\(\)-]+)\s+-\s+(?:(?:(\d+)\s+F\s+&\s+([\d.]+)\s+MB)|(?:([^\d][\w-]*)))'
+        info_regex: '((?:genre)|(?:info))\s+\|\s+([\w.\(\)-]+)\s+-\s+(?:(?:(\d+)\s+F\s+&\s+([\d.]+)\s+MB)|(?:([^\d][\w/.\'&-]*)))'
         info_regex_type: 1
         info_regex_release: 2
         info_regex_size: 4
@@ -215,7 +215,7 @@ input_servers:
         info_examples:
           - '<|-NGPRE-|> [INFO] FOR Loves.Fast.Lane.2023.1080p.WEB.H264-RVKD with 14F 5107MB added.'
           - '<|-NGPRE-|> [GENRE] FOR Bulletproof.1996.POLISH.1080p.WEB.H264-A4O with Action/Comedy/Crime added.'
-        info_regex: '\[((?:GENRE)|(?:INFO))\]\s+FOR\s+([\w.\(\)-]+)\s+with\s+(?:(?:(\d+)F\s+([\d.]+)MB)|(?:([^\d][\w\/&-]*)))\s+added\.'
+        info_regex: '\[((?:GENRE)|(?:INFO))\]\s+FOR\s+([\w.\(\)-]+)\s+with\s+(?:(?:(\d+)F\s+([\d.]+)MB)|(?:([^\d][\w/.\'&-]*)))\s+added\.'
         info_regex_type: 1
         info_regex_release: 2
         info_regex_size: 4
@@ -223,7 +223,7 @@ input_servers:
         info_regex_genre: 5
         addold_examples:
           - '<|-NGPRE-|> [OLDADD] Lonely.Hearts.Killers.German.2006.AC3.BDRip.x264.iNTERNAL-VideoStar in X264 Time: 1396729479 Files: 0 Size: 0 Genre: None added.'
-        addold_regex: '\[(OLDADD)\]\s+([\w.\(\)-]+)\s+in\s+([\w-]+)\s+Time:\s+(\d+)\s+Files:\s+(\d+)\s+Size:\s+([\d.]+)\s+Genre:\s+([\w.\/-]+)\s+added\.'
+        addold_regex: '\[(OLDADD)\]\s+([\w.\(\)-]+)\s+in\s+([\w-]+)\s+Time:\s+(\d+)\s+Files:\s+(\d+)\s+Size:\s+([\d.]+)\s+Genre:\s+([\w/.\'&-]+)\s+added\.'
         addold_regex_type: 1
         addold_regex_release: 2
         addold_regex_section: 3
